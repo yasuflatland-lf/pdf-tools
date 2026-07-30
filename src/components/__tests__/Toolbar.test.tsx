@@ -355,7 +355,10 @@ describe("Toolbar", () => {
     await click(getButton(container, "Merge"));
 
     const dialog = container.querySelector('[role="alertdialog"]');
-    expect(dialog?.textContent).toContain("report.pdf");
+    // The blamed names must come from the source list, not merely from the raw
+    // error text that happens to spell the path out.
+    const blamed = Array.from(dialog?.querySelectorAll("li") ?? []).map((item) => item.textContent);
+    expect(blamed).toEqual(["report.pdf"]);
     expect(dialog?.textContent).toContain("broken xref");
 
     await click(getButton(container, "閉じる"));
