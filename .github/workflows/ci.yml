@@ -80,6 +80,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # Type errors are invisible to Oxlint, so without this gate a change that
+      # alters a ts-rs generated type (for example adding a field to
+      # PlanSnapshot) can break every consumer and still reach a green CI.
+      - name: Type-check the frontend
+        run: pnpm exec tsc --noEmit
+
       - name: Run Oxlint
         run: pnpm oxlint
 
