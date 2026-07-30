@@ -1,7 +1,7 @@
+import { create } from "zustand";
 import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { PlanSnapshot } from "../bindings/PlanSnapshot";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
-import { createStore } from "./create-store";
 
 /**
  * The plan is canonical in Rust: every command returns a whole snapshot, so the
@@ -16,15 +16,10 @@ interface PlanState {
 }
 
 export function createPlanStore() {
-  return createStore<PlanState>((setState) => ({
+  return create<PlanState>((set) => ({
     slots: [],
     sources: [],
-    setSnapshot: (snapshot) =>
-      setState((state) => ({
-        slots: snapshot.slots,
-        sources: snapshot.sources,
-        setSnapshot: state.setSnapshot,
-      })),
+    setSnapshot: (snapshot) => set({ slots: snapshot.slots, sources: snapshot.sources }),
   }));
 }
 

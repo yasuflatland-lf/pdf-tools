@@ -1,4 +1,4 @@
-import { createStore } from "./create-store";
+import { create } from "zustand";
 
 /**
  * View state that only the frontend owns. Nothing here is part of the document,
@@ -10,7 +10,7 @@ interface UiState {
   viewMode: "grid" | "list";
 }
 
-export const useUiStore = createStore<UiState>(() => ({
+export const useUiStore = create<UiState>(() => ({
   expandedSources: new Set(),
   selectedSlots: new Set(),
   viewMode: "grid",
