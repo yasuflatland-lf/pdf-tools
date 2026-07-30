@@ -53,8 +53,8 @@ impl PdfEngine for PdfiumEngine {
     }
 
     /// Composition is implemented in task #24.
-    fn compose(&self, _plan: &ComposePlan, _dest: &Path) -> Result<MergeReport, PdfError> {
-        todo!()
+    fn compose(&self, plan: &ComposePlan, dest: &Path) -> Result<MergeReport, PdfError> {
+        super::compose::compose(self, plan, dest)
     }
 }
 

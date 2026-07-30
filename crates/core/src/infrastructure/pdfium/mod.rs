@@ -4,6 +4,7 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub mod compose;
 pub mod probe;
 pub mod rasterize;
 
