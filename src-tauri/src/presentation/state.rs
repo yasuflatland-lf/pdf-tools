@@ -44,12 +44,6 @@ impl AppState {
         self.pdf.as_ref()
     }
 
-    /// Returns a shared handle to the PDF engine, so a merge can run on a blocking
-    /// thread without borrowing the state.
-    pub fn pdf_engine(&self) -> Arc<dyn PdfEngine> {
-        self.pdf.clone()
-    }
-
     pub fn images(&self) -> &dyn ImageDecoder {
         self.images.as_ref()
     }

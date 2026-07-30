@@ -143,22 +143,21 @@ pub fn compose_inner(
         let session = state.session();
         (session.plan().clone(), session.sources().to_vec())
     };
-    let engine = state.pdf_engine();
 
-    Compose {
-        pdf: engine.as_ref(),
-    }
-    .execute(&plan, &sources, dest, progress)
-    .map(MergeReportDto::from)
-    .map_err(|error| match error {
-        ComposeError::EmptyPlan => {
-            "there is nothing to merge: add at least one file first".to_owned()
-        }
-        other => other.to_string(),
-    })
+    Compose { pdf: state.pdf() }
+        .execute(&plan, &sources, dest, progress)
+        .map(MergeReportDto::from)
+        .map_err(|error| match error {
+            ComposeError::EmptyPlan => {
+                "there is nothing to merge: add at least one file first".to_owned()
+            }
+            other => other.to_string(),
+        })
 }
 
-/// Emits `compose-progress` for every page the merge completes.
+/// Forwards every tick the `Compose` use case reports as a `compose-progress`
+/// event. `Compose` currently reports all ticks before it calls the engine, so
+/// the frontend sees the whole ramp up front rather than page-by-page.
 struct EventProgress {
     app: AppHandle,
 }
