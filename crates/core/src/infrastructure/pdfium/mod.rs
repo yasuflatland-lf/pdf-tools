@@ -4,6 +4,7 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub mod compose;
 pub mod probe;
 
 /// A thread-safe handle to the process-wide PDFium library.
