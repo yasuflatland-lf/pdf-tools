@@ -24,4 +24,6 @@ pub enum ImageError {
     Missing { path: PathBuf },
     #[error("unsupported image format: {path}")]
     UnsupportedFormat { path: PathBuf },
+    #[error("failed to encode the image: {reason}")]
+    EncodeFailed { reason: String },
 }

@@ -1,9 +1,13 @@
 pub mod logging;
 pub mod presentation;
 
+use pdf_tools_core::application::ports::PdfEngine;
+use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
-use presentation::commands::{pdfium_health, PdfiumState};
+use presentation::commands::{pdfium_health, rasterize_slot, PdfiumState};
+use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::Manager;
 
 fn load_pdfium(app: &tauri::App) -> Result<PdfiumEngine, String> {
@@ -63,15 +67,20 @@ pub fn run() {
                 );
             }
 
-            let pdfium = load_pdfium(app);
+            let pdfium = load_pdfium(app).map(Arc::new);
             if let Err(error) = &pdfium {
                 tracing::error!(%error, "PDFium is unavailable");
             }
+            let pdf: Arc<dyn PdfEngine> = match &pdfium {
+                Ok(engine) => engine.clone(),
+                Err(error) => Arc::new(UnavailablePdfEngine::new(error.clone())),
+            };
+            app.manage(AppState::with_engines(pdf, Arc::new(ImageCrateDecoder)));
             app.manage(PdfiumState::new(pdfium));
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pdfium_health])
+        .invoke_handler(tauri::generate_handler![pdfium_health, rasterize_slot])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
 }
