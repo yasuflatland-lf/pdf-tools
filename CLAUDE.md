@@ -1,7 +1,7 @@
 # CLAUDE.md — pdf-tools
 
 Mac/Windows native desktop app (Tauri 2) that merges drag-and-dropped PDFs and images (jpg/png/gif) into a single PDF, entirely offline — no file ever leaves the machine and the app makes no network requests.
-State: v1.0.0. The merge plan (an ordered list of one-page slots) is canonical in Rust; every Tauri command returns a whole `PlanSnapshot` and Zustand only replaces its contents. Contiguous pages from one source collapse into a card, ungroup when something is inserted inside the run, and refold automatically once the run is contiguous and monotonically increasing again. Thumbnails cross IPC as raw PNG bytes into a virtualized grid backed by an LRU blob cache. Known limitation: `compose` embeds images as uncompressed bitmaps, so a 100-image merge takes ~13 s against a 10 s target.
+State: v0.1.0. The merge plan (an ordered list of one-page slots) is canonical in Rust; every Tauri command returns a whole `PlanSnapshot` and Zustand only replaces its contents. Contiguous pages from one source collapse into a card, ungroup when something is inserted inside the run, and refold automatically once the run is contiguous and monotonically increasing again. Thumbnails cross IPC as raw PNG bytes into a virtualized grid backed by an LRU blob cache. Known limitation: `compose` embeds images as uncompressed bitmaps, so a 100-image merge takes ~13 s against a 10 s target.
 
 ## Mandatory rules (harness)
 

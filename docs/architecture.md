@@ -281,7 +281,7 @@ page against 2048 × 1536 × 3 B ≈ 9.4 MB) shows images are embedded as **unco
 `infrastructure/pdfium/compose.rs`. Quadrupling input bytes only multiplies time by ~1.3, which
 confirms pixel count — not file size — dominates. Meeting the 10 s target requires passing the
 original JPEG stream through, or applying DCTDecode/FlateDecode on embed. **This is a known
-v1.0.0 limitation, not a resolved item.**
+v0.1.0 limitation, not a resolved item.**
 
 ### Why some rows are still unmeasured
 
