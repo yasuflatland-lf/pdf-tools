@@ -1,11 +1,11 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ComposeProgressDto } from "../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../bindings/MergeReportDto";
 import { countLabel } from "../lib/format";
 import { defaultOutputDir, joinPath, parentDir, rememberOutputDir } from "../lib/output-dir";
-import { compose, onComposeProgress } from "../lib/tauri-api";
+import { compose, onComposeProgress, redo, undo } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
 import { ProgressBar } from "./ProgressBar";
 
@@ -25,10 +25,47 @@ async function showInFolder(dest: string): Promise<void> {
 export function Toolbar() {
   const fileCount = usePlanStore((state) => state.sources.length);
   const pageCount = usePlanStore((state) => state.slots.length);
+  const canUndo = usePlanStore((state) => state.canUndo);
+  const canRedo = usePlanStore((state) => state.canRedo);
   const [isMerging, setIsMerging] = useState(false);
   const [progress, setProgress] = useState<ComposeProgressDto>({ done: 0, total: 0 });
   const [result, setResult] = useState<MergeResult | null>(null);
   const [failed, setFailed] = useState(false);
+
+  const performUndo = useCallback(async () => {
+    try {
+      usePlanStore.getState().setSnapshot(await undo());
+    } catch (error) {
+      console.error("undo failed", error);
+    }
+  }, []);
+
+  const performRedo = useCallback(async () => {
+    try {
+      usePlanStore.getState().setSnapshot(await redo());
+    } catch (error) {
+      console.error("redo failed", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") {
+        return;
+      }
+
+      const wantsRedo = event.shiftKey;
+      if (isMerging || (wantsRedo ? !canRedo : !canUndo)) {
+        return;
+      }
+
+      event.preventDefault();
+      void (wantsRedo ? performRedo() : performUndo());
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canRedo, canUndo, isMerging, performRedo, performUndo]);
 
   async function merge(): Promise<void> {
     try {
@@ -70,6 +107,22 @@ export function Toolbar() {
         /
       </span>
       <span>{countLabel(pageCount, "page")}</span>
+      <button
+        className="rounded-md border border-slate-700 px-3 py-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600 disabled:hover:bg-transparent"
+        disabled={!canUndo || isMerging}
+        onClick={() => void performUndo()}
+        type="button"
+      >
+        Undo
+      </button>
+      <button
+        className="rounded-md border border-slate-700 px-3 py-1.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600 disabled:hover:bg-transparent"
+        disabled={!canRedo || isMerging}
+        onClick={() => void performRedo()}
+        type="button"
+      >
+        Redo
+      </button>
       <div className="ml-auto flex items-center gap-3">
         {isMerging && (
           <ProgressBar done={progress.done} label="Merge progress" total={progress.total} />

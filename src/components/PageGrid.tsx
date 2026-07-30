@@ -21,7 +21,7 @@ import { rasterizeSlot, reorder } from "../lib/tauri-api";
 import { createThumbnailCache } from "../lib/thumbnail-cache";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
-import { PageCard } from "./PageCard";
+import { GroupCard } from "./GroupCard";
 import { SortableCard } from "./SortableCard";
 
 const CARD_MIN_WIDTH = 180;
@@ -37,6 +37,7 @@ interface DisplayCard {
   start: number;
   pageCount: number;
   collapsed: boolean;
+  collapsible: boolean;
 }
 
 function getColumnCount(width: number): number {
@@ -64,6 +65,7 @@ export function PageGrid() {
     return groupContiguous(slots, sources).flatMap<DisplayCard>((group) => {
       const source = sourcesById.get(group.sourceId);
       const groupStart = start;
+      const collapsible = source?.grouping === "grouped" && group.pageCount > 1;
       start += group.pageCount;
 
       if (expandedSources.has(group.sourceId)) {
@@ -74,6 +76,7 @@ export function PageGrid() {
           start: groupStart + slotIndex,
           pageCount: 1,
           collapsed: false,
+          collapsible,
         }));
       }
 
@@ -85,6 +88,7 @@ export function PageGrid() {
           start: groupStart,
           pageCount: group.pageCount,
           collapsed: group.pageCount > 1,
+          collapsible,
         },
       ];
     });
@@ -173,10 +177,15 @@ export function PageGrid() {
 
                     return (
                       <SortableCard key={card.key} id={card.key} label={fileName}>
-                        <PageCard
+                        <GroupCard
                           cache={cache}
                           collapsed={card.collapsed}
                           fileName={fileName}
+                          onToggle={
+                            card.collapsible
+                              ? () => useUiStore.getState().toggleExpanded(card.slot.source)
+                              : undefined
+                          }
                           pageCount={card.pageCount}
                           pageNumber={card.slot.page + 1}
                           slotId={card.slot.id}

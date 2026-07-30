@@ -20,6 +20,14 @@ export async function reorder(
   return invoke<PlanSnapshot>("reorder", { fromStart, fromEnd, to });
 }
 
+export async function undo(): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("undo");
+}
+
+export async function redo(): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("redo");
+}
+
 export async function compose(dest: string): Promise<MergeReportDto> {
   return invoke<MergeReportDto>("compose", { dest });
 }

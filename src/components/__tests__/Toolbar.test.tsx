@@ -14,14 +14,18 @@ const mocks = vi.hoisted(() => ({
   parentDir: vi.fn((path: string) => path.slice(0, path.lastIndexOf("/"))),
   progress: {} as { handler?: (progress: ComposeProgressDto) => void },
   rememberOutputDir: vi.fn(),
+  redo: vi.fn(),
   revealItemInDir: vi.fn(),
   save: vi.fn(),
+  undo: vi.fn(),
   unlisten: vi.fn(),
 }));
 
 vi.mock("../../lib/tauri-api", () => ({
   compose: mocks.compose,
   onComposeProgress: mocks.onComposeProgress,
+  redo: mocks.redo,
+  undo: mocks.undo,
 }));
 vi.mock("../../lib/output-dir", () => ({
   defaultOutputDir: mocks.defaultOutputDir,
@@ -82,6 +86,17 @@ function deferred<T>(): {
   return { promise, resolve, reject };
 }
 
+/** The macOS redo chord, which reports an upper-case `key` because of the shift. */
+function redoShortcut(): KeyboardEvent {
+  return new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: "Z",
+    metaKey: true,
+    shiftKey: true,
+  });
+}
+
 async function click(button: HTMLButtonElement): Promise<void> {
   await act(async () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -101,6 +116,8 @@ describe("Toolbar", () => {
     mocks.save.mockReset();
     mocks.unlisten.mockReset();
     mocks.progress.handler = undefined;
+    mocks.redo.mockReset();
+    mocks.undo.mockReset();
 
     mocks.defaultOutputDir.mockResolvedValue("/Users/me/Downloads");
     mocks.onComposeProgress.mockImplementation(
@@ -137,6 +154,121 @@ describe("Toolbar", () => {
     });
 
     expect(getButton(container, "Merge").disabled).toBe(false);
+  });
+
+  it("disables Undo and Redo when the snapshot says they are unavailable", async () => {
+    const container = await renderToolbar();
+
+    expect(getButton(container, "Undo").disabled).toBe(true);
+    expect(getButton(container, "Redo").disabled).toBe(true);
+  });
+
+  it("stores the snapshot returned by Undo", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    mocks.undo.mockResolvedValue({
+      slots: [{ id: 2, source: 20, page: 0 }],
+      sources: [],
+      can_undo: false,
+      can_redo: true,
+    });
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Undo"));
+
+    expect(mocks.undo).toHaveBeenCalledOnce();
+    expect(usePlanStore.getState().slots).toEqual([{ id: 2, source: 20, page: 0 }]);
+    expect(usePlanStore.getState().canRedo).toBe(true);
+  });
+
+  it("stores the snapshot returned by the Ctrl+Z shortcut", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    mocks.undo.mockResolvedValue({
+      slots: [],
+      sources: [],
+      can_undo: false,
+      can_redo: true,
+    });
+    await renderToolbar();
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "z",
+    });
+
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(mocks.undo).toHaveBeenCalledOnce();
+    expect(usePlanStore.getState().slots).toEqual([]);
+    expect(usePlanStore.getState().canRedo).toBe(true);
+  });
+
+  it("redoes on the shifted shortcut and ignores it when there is nothing to redo", async () => {
+    usePlanStore
+      .getState()
+      .setSnapshot({ slots: [], sources: [], can_undo: true, can_redo: false });
+    mocks.redo.mockResolvedValue({
+      slots: [{ id: 3, source: 10, page: 2 }],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    await renderToolbar();
+
+    const ignored = redoShortcut();
+    await act(async () => {
+      window.dispatchEvent(ignored);
+      await Promise.resolve();
+    });
+    expect(mocks.redo).not.toHaveBeenCalled();
+    expect(ignored.defaultPrevented).toBe(false);
+    // The shifted shortcut must never fall through to an undo.
+    expect(mocks.undo).not.toHaveBeenCalled();
+
+    await act(async () => {
+      usePlanStore
+        .getState()
+        .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: true });
+    });
+    await act(async () => {
+      window.dispatchEvent(redoShortcut());
+      await Promise.resolve();
+    });
+
+    expect(mocks.redo).toHaveBeenCalledOnce();
+    expect(usePlanStore.getState().slots).toEqual([{ id: 3, source: 10, page: 2 }]);
+  });
+
+  it("logs a failed undo and leaves the plan untouched", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    mocks.undo.mockRejectedValue(new Error("history unavailable"));
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Undo"));
+
+    expect(consoleError).toHaveBeenCalledWith("undo failed", expect.any(Error));
+    expect(usePlanStore.getState().slots).toEqual([{ id: 1, source: 10, page: 0 }]);
+    consoleError.mockRestore();
   });
 
   it("opens the save dialog with a merged PDF default path", async () => {

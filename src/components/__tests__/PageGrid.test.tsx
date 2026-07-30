@@ -187,6 +187,78 @@ describe("PageGrid", () => {
     expect(container.textContent).not.toContain("3 pages");
   });
 
+  it("expands a collapsed grouped card when its control is clicked", async () => {
+    load(source(10, "grouped", 3), 3);
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLButtonElement>('[aria-label="Expand 10.pdf"]');
+
+    expect(expand).not.toBeNull();
+    await act(async () => {
+      expand?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(true);
+    expect(container.querySelectorAll("article")).toHaveLength(3);
+    expect(container.textContent).toContain("Page 1");
+    expect(container.textContent).not.toContain("3 pages");
+  });
+
+  it("folds an expanded source back into one card from any of its pages", async () => {
+    load(source(10, "grouped", 3), 3);
+    useUiStore.setState({ expandedSources: new Set([10]) });
+    const container = await renderGrid();
+    const collapse = container.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="Collapse 10.pdf"]',
+    );
+
+    expect(collapse).toHaveLength(3);
+    await act(async () => {
+      collapse[2].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(false);
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(container.textContent).toContain("3 pages");
+  });
+
+  it("keeps a keypress on the expand control away from the drag sensor", async () => {
+    load(source(10, "grouped", 3), 3);
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLElement>('[aria-label="Expand 10.pdf"]');
+    const sortable = expand?.closest<HTMLElement>('[aria-roledescription="sortable"]');
+    layOutSortableCards(container);
+
+    // The same key on the card itself does pick it up, so a missing
+    // `aria-pressed` below really is the control swallowing the key.
+    await pressKey(sortable as HTMLElement, "Space");
+    expect(sortable?.getAttribute("aria-pressed")).toBe("true");
+    await pressKey(sortable as HTMLElement, "Escape");
+
+    await pressKey(expand as HTMLElement, "Space");
+
+    // dnd-kit's keyboard sensor listens on the sortable wrapper; letting the
+    // key through would pick the card up instead of toggling the group.
+    expect(sortable?.getAttribute("aria-pressed")).not.toBe("true");
+  });
+
+  it("renders no expand or collapse control for an ungrouped source", async () => {
+    load(source(10, "ungrouped", 2), 2);
+
+    const container = await renderGrid();
+
+    expect(container.querySelector('[aria-label^="Expand "]')).toBeNull();
+    expect(container.querySelector('[aria-label^="Collapse "]')).toBeNull();
+  });
+
+  it("renders no expand control for a grouped source with a single page", async () => {
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderGrid();
+
+    expect(container.querySelector('[aria-label^="Expand "]')).toBeNull();
+    expect(container.querySelector('[aria-label^="Collapse "]')).toBeNull();
+  });
+
   it("shows a thumbnail once the rasterized bytes arrive", async () => {
     load(source(10, "grouped", 1), 1);
 
