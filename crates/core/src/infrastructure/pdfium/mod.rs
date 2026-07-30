@@ -4,6 +4,8 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub mod probe;
+
 /// A thread-safe handle to the process-wide PDFium library.
 pub struct PdfiumEngine {
     library: Mutex<Pdfium>,
