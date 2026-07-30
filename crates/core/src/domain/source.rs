@@ -33,7 +33,8 @@ pub struct SourceFile {
     pub kind: SourceKind,
     pub grouping: Grouping,
     pub page_count: u32,
-    /// One entry per page for PDFs; exactly one entry for images.
+    /// One entry per page for PDF sources. Empty for images: an image page is
+    /// sized from the plan's dominant page size, never from the file itself.
     pub page_sizes: Vec<PageSize>,
     pub status: SourceStatus,
 }
