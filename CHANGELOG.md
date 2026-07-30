@@ -5,11 +5,10 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] — unreleased
+## [0.1.0] — 2026-07-31
 
-First release. The version is set to `1.0.0` across `Cargo.toml` (both crates), `package.json` and
-`tauri.conf.json`; **the `v1.0.0` tag and the GitHub release are published separately, after this
-work reaches `main`.**
+First release. The version is set to `0.1.0` across `Cargo.toml` (both crates), `package.json` and
+`tauri.conf.json`.
 
 PDF Tools merges PDFs and images (jpg / png / gif) into a single PDF, in any page order, without a
 single byte leaving the machine.
