@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
-import { addSources } from "../tauri-api";
+import { addSources, reorder } from "../tauri-api";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
-describe("addSources", () => {
+describe("tauri-api", () => {
   beforeEach(() => {
     invoke.mockReset();
   });
@@ -23,5 +23,22 @@ describe("addSources", () => {
 
     await expect(addSources(paths)).resolves.toBe(snapshot);
     expect(invoke).toHaveBeenCalledWith("add_sources", { paths });
+  });
+
+  it("passes the slot range and destination to the reorder command", async () => {
+    const snapshot: PlanSnapshot = {
+      slots: [],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockResolvedValue(snapshot);
+
+    await expect(reorder(0, 2, 3)).resolves.toBe(snapshot);
+    expect(invoke).toHaveBeenCalledWith("reorder", {
+      fromStart: 0,
+      fromEnd: 2,
+      to: 3,
+    });
   });
 });

@@ -12,6 +12,14 @@ export async function rasterizeSlot(slotId: number, width: number): Promise<Arra
   return invoke<ArrayBuffer>("rasterize_slot", { slotId, width });
 }
 
+export async function reorder(
+  fromStart: number,
+  fromEnd: number,
+  to: number,
+): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("reorder", { fromStart, fromEnd, to });
+}
+
 export async function compose(dest: string): Promise<MergeReportDto> {
   return invoke<MergeReportDto>("compose", { dest });
 }
