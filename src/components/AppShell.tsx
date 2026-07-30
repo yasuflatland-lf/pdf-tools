@@ -1,30 +1,29 @@
 import { useEffect } from "react";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
-import { statusLabel } from "../lib/format";
 import { resolveShortcut } from "../lib/keyboard";
 import { removeSlots } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { DropZone } from "./DropZone";
+import { SourceErrorCard } from "./PageCard";
 import { PageGrid } from "./PageGrid";
 import { PageList } from "./PageList";
 import { Toolbar } from "./Toolbar";
 
 /**
  * Files that contribute no pages would otherwise vanish from the window, since
- * the grid only shows slots. Proper error reporting is Task 29; until then this
- * at least names the files that were dropped and did nothing.
+ * the grid only shows slots. Keeping them visible makes their exclusion and the
+ * reason clear instead of making an imported file appear to be lost.
  */
 function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
   return (
-    <ul className="space-y-2" aria-label="Unusable source files">
+    <ul
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      aria-label="Unusable source files"
+    >
       {sources.map((source) => (
-        <li
-          key={source.id}
-          className="rounded-lg border border-amber-700/60 bg-amber-950/40 px-4 py-2 text-sm"
-        >
-          <span className="font-medium text-amber-100">{source.file_name}</span>
-          <span className="text-amber-200/80"> · {statusLabel(source.status)}</span>
+        <li key={source.id}>
+          <SourceErrorCard fileName={source.file_name} status={source.status} />
         </li>
       ))}
     </ul>
