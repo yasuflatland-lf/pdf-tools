@@ -2486,6 +2486,7 @@ dependencies = [
  "image",
  "pdfium-render",
  "proptest",
+ "tempfile",
  "thiserror 2.0.19",
 ]
 
