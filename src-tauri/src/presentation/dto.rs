@@ -1,8 +1,26 @@
+use pdf_tools_core::application::ports::MergeReport;
 use pdf_tools_core::application::session::PlanSession;
 use pdf_tools_core::domain::plan::PageSlot;
 use pdf_tools_core::domain::source::{Grouping, SourceFile, SourceKind, SourceStatus};
 use serde::Serialize;
 use ts_rs::TS;
+
+/// The result of a successful merge.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct MergeReportDto {
+    pub page_count: u32,
+    #[ts(type = "number")]
+    pub bytes_written: u64,
+}
+
+/// Progress emitted while a merge is running.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ComposeProgressDto {
+    pub done: u32,
+    pub total: u32,
+}
 
 /// The whole document as the frontend sees it. Commands return a full snapshot
 /// rather than a diff, so the UI never has to replay operations itself.
@@ -123,6 +141,15 @@ impl From<&SourceStatus> for SourceStatusDto {
     }
 }
 
+impl From<MergeReport> for MergeReportDto {
+    fn from(report: MergeReport) -> Self {
+        Self {
+            page_count: report.page_count,
+            bytes_written: report.bytes_written,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -199,5 +226,21 @@ mod tests {
             value,
             serde_json::json!({ "id": 3, "source": 7, "page": 1 })
         );
+    }
+
+    #[test]
+    fn compose_types_use_the_expected_wire_field_names() {
+        let report = serde_json::to_value(MergeReportDto::from(MergeReport {
+            page_count: 2,
+            bytes_written: 4096,
+        }))
+        .unwrap();
+        assert_eq!(
+            report,
+            serde_json::json!({ "page_count": 2, "bytes_written": 4096 })
+        );
+
+        let progress = serde_json::to_value(ComposeProgressDto { done: 1, total: 2 }).unwrap();
+        assert_eq!(progress, serde_json::json!({ "done": 1, "total": 2 }));
     }
 }

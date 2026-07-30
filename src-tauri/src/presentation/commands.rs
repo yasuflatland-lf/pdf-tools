@@ -1,15 +1,16 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
 use pdf_tools_core::domain::geometry::RasterSpec;
 use pdf_tools_core::domain::ids::SlotId;
 use pdf_tools_core::domain::source::SourceKind;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use pdf_tools_core::infrastructure::png::encode_png;
 use tauri::ipc::Response;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use super::dto::PlanSnapshot;
+use super::dto::{ComposeProgressDto, MergeReportDto, PlanSnapshot};
 use super::state::AppState;
 
 /// Managed application state for PDFium startup.
@@ -126,6 +127,63 @@ pub fn redo_inner(state: &AppState) -> Result<PlanSnapshot, String> {
 #[tauri::command]
 pub fn redo(state: State<'_, AppState>) -> Result<PlanSnapshot, String> {
     redo_inner(&state)
+}
+
+/// The body of the `compose` command. Split out of the command so tests can
+/// exercise it without a webview.
+pub fn compose_inner(
+    state: &AppState,
+    dest: &Path,
+    progress: &dyn ProgressSink,
+) -> Result<MergeReportDto, String> {
+    // The plan and the sources are cloned out of the session so the lock is
+    // released before the engine runs: a merge must never block the commands
+    // the UI issues meanwhile, and it must never mutate the plan.
+    let (plan, sources) = {
+        let session = state.session();
+        (session.plan().clone(), session.sources().to_vec())
+    };
+    let engine = state.pdf_engine();
+
+    Compose {
+        pdf: engine.as_ref(),
+    }
+    .execute(&plan, &sources, dest, progress)
+    .map(MergeReportDto::from)
+    .map_err(|error| match error {
+        ComposeError::EmptyPlan => {
+            "there is nothing to merge: add at least one file first".to_owned()
+        }
+        other => other.to_string(),
+    })
+}
+
+/// Emits `compose-progress` for every page the merge completes.
+struct EventProgress {
+    app: AppHandle,
+}
+
+impl ProgressSink for EventProgress {
+    fn report(&self, done: u32, total: u32) {
+        // A failed emit must not abort the merge; it only costs a progress tick.
+        if let Err(error) = self
+            .app
+            .emit("compose-progress", ComposeProgressDto { done, total })
+        {
+            tracing::warn!(%error, "failed to emit compose-progress");
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn compose(app: AppHandle, dest: String) -> Result<MergeReportDto, String> {
+    let dest = PathBuf::from(dest);
+    tauri::async_runtime::spawn_blocking(move || {
+        let progress = EventProgress { app: app.clone() };
+        compose_inner(&app.state::<AppState>(), &dest, &progress)
+    })
+    .await
+    .map_err(|error| format!("the merge task could not be started: {error}"))?
 }
 
 /// Renders one plan slot to PNG bytes. Split out of the command so tests can
