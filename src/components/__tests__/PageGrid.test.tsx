@@ -228,17 +228,17 @@ describe("PageGrid", () => {
     const sortable = expand?.closest<HTMLElement>('[aria-roledescription="sortable"]');
     layOutSortableCards(container);
 
-    // The same key on the card itself does pick it up, so a missing
-    // `aria-pressed` below really is the control swallowing the key.
+    // The faded card is `isDragging`: the same key on the card itself does pick
+    // it up, so the full opacity below really is the control swallowing the key.
     await pressKey(sortable as HTMLElement, "Space");
-    expect(sortable?.getAttribute("aria-pressed")).toBe("true");
+    expect(sortable?.style.opacity).toBe("0.4");
     await pressKey(sortable as HTMLElement, "Escape");
 
     await pressKey(expand as HTMLElement, "Space");
 
     // dnd-kit's keyboard sensor listens on the sortable wrapper; letting the
     // key through would pick the card up instead of toggling the group.
-    expect(sortable?.getAttribute("aria-pressed")).not.toBe("true");
+    expect(sortable?.style.opacity).toBe("1");
   });
 
   it("renders no expand or collapse control for an ungrouped source", async () => {
@@ -276,6 +276,19 @@ describe("PageGrid", () => {
     expect(document.activeElement?.getAttribute("role")).toBe("option");
     expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([1]));
+  });
+
+  // `aria-selected` is only announced on an option the listbox owns. Any role
+  // between the two -- dnd-kit puts `role="button"` on its drag wrapper unless
+  // told otherwise -- silently drops the selection state for a screen reader.
+  it("lets the listbox own the option cards with no role in between", async () => {
+    load(source(10, "ungrouped", 3), 3);
+
+    const container = await renderGrid();
+
+    const option = container.querySelector('[role="option"]');
+    expect(option).not.toBeNull();
+    expect(option?.parentElement?.closest("[role]")?.getAttribute("role")).toBe("listbox");
   });
 
   it("shows a thumbnail once the rasterized bytes arrive", async () => {

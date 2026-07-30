@@ -221,9 +221,16 @@ export function PageGrid() {
                   {rowCards.map((card, positionInRow) => {
                     const fileName = card.source?.file_name ?? "Unknown source";
                     const cardIndex = virtualRow.index * columnCount + positionInRow;
+                    const selected = card.slotIds.every((slotId) => selectedSlots.has(slotId));
 
                     return (
-                      <SortableCard key={card.key} id={card.key} label={fileName}>
+                      <SortableCard
+                        key={card.key}
+                        id={card.key}
+                        label={fileName}
+                        focused={focusedIndex === cardIndex}
+                        selected={selected}
+                      >
                         <GroupCard
                           cache={cache}
                           collapsed={card.collapsed}
@@ -237,8 +244,7 @@ export function PageGrid() {
                           pageNumber={card.slot.page + 1}
                           slotId={card.slot.id}
                           thumbnailWidth={THUMBNAIL_WIDTH}
-                          focused={focusedIndex === cardIndex}
-                          selected={card.slotIds.every((slotId) => selectedSlots.has(slotId))}
+                          selected={selected}
                         />
                       </SortableCard>
                     );

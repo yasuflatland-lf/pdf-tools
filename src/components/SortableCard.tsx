@@ -1,5 +1,5 @@
 import { useSortable } from "@dnd-kit/sortable";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 interface Transform {
   x: number;
@@ -24,18 +24,44 @@ function transformToString(transform: Transform | null): string | undefined {
 
 interface SortableCardProps {
   children: ReactNode;
+  focused?: boolean;
   id: string;
   label: string;
+  selected?: boolean;
 }
 
-export function SortableCard({ children, id, label }: SortableCardProps) {
+export function SortableCard({ children, focused, id, label, selected }: SortableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
+    // The drag wrapper is the element the grid's listbox owns, so the option
+    // role and the selection state belong here. On a node further in they would
+    // sit behind dnd-kit's own `role="button"`, and `aria-selected` outside a
+    // listbox is announced by nothing.
+    attributes: { role: "option" },
   });
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Memoized so the node is not detached from and reattached to dnd-kit on
+  // every render, which a drag produces plenty of.
+  const setCardRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setNodeRef(node);
+      cardRef.current = node;
+    },
+    [setNodeRef],
+  );
+
+  // Arrow navigation only moves an index; the card the index lands on is what
+  // takes the DOM focus. A card scrolled into view by the virtualizer mounts
+  // already focused, so this also covers the rows that were not rendered yet.
+  useEffect(() => {
+    if (focused) {
+      cardRef.current?.focus();
+    }
+  }, [focused]);
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setCardRef}
       className="relative"
       style={{
         transform: transformToString(transform),
@@ -45,6 +71,7 @@ export function SortableCard({ children, id, label }: SortableCardProps) {
       {...attributes}
       {...listeners}
       aria-label={`Reorder ${label}`}
+      aria-selected={selected === true}
     >
       {children}
     </div>
