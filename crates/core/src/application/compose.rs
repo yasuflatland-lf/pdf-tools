@@ -325,6 +325,31 @@ mod tests {
     }
 
     #[test]
+    fn a_plan_that_resolves_to_no_entry_is_rejected() {
+        let temp_dir = tempdir().expect("temporary directory should be created");
+        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 99, 0)]);
+        let sources = vec![SourceFile {
+            status: SourceStatus::Encrypted,
+            ..pdf_source(
+                10,
+                create_file(&temp_dir, "encrypted.pdf"),
+                vec![PageSize::A4_PORTRAIT],
+            )
+        }];
+        let engine = FakePdfEngine::new();
+
+        let err = Compose { pdf: &engine }
+            .execute(&plan, &sources, Path::new("/out.pdf"), &NullProgress)
+            .unwrap_err();
+
+        assert_eq!(err, ComposeError::EmptyPlan);
+        assert!(
+            engine.last_composed().is_none(),
+            "the engine must not be invoked"
+        );
+    }
+
+    #[test]
     fn progress_reports_are_monotonic_and_called_exactly_total_times() {
         let sink = RecordingProgress::default();
         let (_temp_dir, plan, sources) = plan_with_three_slots();
