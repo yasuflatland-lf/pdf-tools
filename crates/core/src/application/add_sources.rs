@@ -174,6 +174,26 @@ mod tests {
         assert_eq!(result.plan.len(), 3);
         assert_eq!(result.sources[0].page_count, 3);
         assert_eq!(result.sources[0].grouping, Grouping::Grouped);
+        assert_eq!(result.sources[0].path, PathBuf::from("/a.pdf"));
+        assert_eq!(result.sources[0].status, SourceStatus::Ready);
+        assert_eq!(result.sources[0].page_sizes, vec![PageSize::A4_PORTRAIT; 3]);
+
+        // Every slot must point back at the source it came from, in page order.
+        let source_id = result.sources[0].id;
+        assert!(result
+            .plan
+            .slots()
+            .iter()
+            .all(|slot| slot.source == source_id));
+        assert_eq!(
+            result
+                .plan
+                .slots()
+                .iter()
+                .map(|slot| slot.page)
+                .collect::<Vec<_>>(),
+            vec![PageIndex(0), PageIndex(1), PageIndex(2)]
+        );
     }
 
     #[test]
@@ -197,6 +217,14 @@ mod tests {
         );
         assert_eq!(result.plan.len(), 1);
         assert_eq!(result.sources[0].kind, SourceKind::Image);
+        assert_eq!(result.sources[0].page_count, 1);
+        assert_eq!(result.sources[0].grouping, Grouping::Grouped);
+        assert_eq!(result.sources[0].status, SourceStatus::Ready);
+        // An image is laid out at the plan's dominant page size, so it carries
+        // no page size of its own.
+        assert!(result.sources[0].page_sizes.is_empty());
+        assert_eq!(result.plan.slots()[0].source, result.sources[0].id);
+        assert_eq!(result.plan.slots()[0].page, PageIndex(0));
     }
 
     #[test]
@@ -244,6 +272,21 @@ mod tests {
         );
         assert_eq!(result.plan.len(), 2); // only the good file contributed
         assert_eq!(result.sources.len(), 2); // but both are recorded
+
+        // Sources keep the input order, and only the good one owns slots.
+        assert_eq!(result.sources[0].path, PathBuf::from("/bad.pdf"));
+        assert!(matches!(
+            result.sources[0].status,
+            SourceStatus::Unreadable { .. }
+        ));
+        assert_eq!(result.sources[1].path, PathBuf::from("/good.pdf"));
+        assert_eq!(result.sources[1].status, SourceStatus::Ready);
+        let good_id = result.sources[1].id;
+        assert!(result
+            .plan
+            .slots()
+            .iter()
+            .all(|slot| slot.source == good_id));
     }
 
     #[test]
@@ -307,6 +350,8 @@ mod tests {
             .sources
             .iter()
             .all(|source| source.kind == SourceKind::Pdf));
+        // Each recorded source draws its own id from the sequence.
+        assert_ne!(result.sources[0].id, result.sources[1].id);
     }
 
     #[test]
