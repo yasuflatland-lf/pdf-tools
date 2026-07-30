@@ -28,6 +28,9 @@ export interface DisplayCard {
   collapsed: boolean;
   collapsible: boolean;
   fileName: string;
+  // Every slot the card stands for, so selecting a collapsed group selects the
+  // whole run rather than only its first page.
+  slotIds: number[];
 }
 
 export function usePageCards(): {
@@ -68,6 +71,7 @@ export function usePageCards(): {
           collapsed: false,
           collapsible,
           fileName,
+          slotIds: [slot.id],
         }));
       }
 
@@ -81,6 +85,7 @@ export function usePageCards(): {
           collapsed: group.pageCount > 1,
           collapsible,
           fileName,
+          slotIds: group.slotIds,
         },
       ];
     });
@@ -133,6 +138,9 @@ interface CardRow {
 
 export function useCardRows({ cards, columnCount, rowHeight, scrollRef }: CardRowsOptions): {
   rows: CardRow[];
+  // Exposed so keyboard navigation can bring a card the virtualizer has not
+  // rendered yet into view before the focus moves onto it.
+  scrollToIndex: (rowIndex: number) => void;
   totalSize: number;
 } {
   const rowCount = Math.ceil(cards.length / columnCount);
@@ -154,5 +162,9 @@ export function useCardRows({ cards, columnCount, rowHeight, scrollRef }: CardRo
       ? [{ index: 0, key: "unmeasured-row", start: 0 }]
       : virtualRows;
 
-  return { rows: renderedRows, totalSize: rowVirtualizer.getTotalSize() };
+  return {
+    rows: renderedRows,
+    scrollToIndex: rowVirtualizer.scrollToIndex,
+    totalSize: rowVirtualizer.getTotalSize(),
+  };
 }

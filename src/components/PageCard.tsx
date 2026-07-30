@@ -10,6 +10,7 @@ interface PageCardProps {
   pageNumber: number;
   slotId: number;
   thumbnailWidth: number;
+  selected?: boolean;
 }
 
 export function PageCard({
@@ -20,6 +21,7 @@ export function PageCard({
   pageNumber,
   slotId,
   thumbnailWidth,
+  selected,
 }: PageCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string>();
   const [failed, setFailed] = useState(false);
@@ -48,7 +50,14 @@ export function PageCard({
   }, [cache, slotId, thumbnailWidth]);
 
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+    // The option role, the selection state and the DOM focus live on the drag
+    // wrapper in `SortableCard`, which is the node the grid's listbox owns.
+    // This element only renders the selection.
+    <article
+      className={`overflow-hidden rounded-xl border bg-slate-900 ${
+        selected ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-800"
+      }`}
+    >
       <div className="grid h-60 place-items-center bg-slate-800/70">
         {thumbnailUrl ? (
           <img

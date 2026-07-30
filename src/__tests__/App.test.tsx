@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { usePlanStore } from "../store/plan-store";
+import { useUiStore } from "../store/ui-store";
 
 const { dragDrop, invoke, onDragDropEvent, unlisten } = vi.hoisted(() => {
   const dragDropState: {
@@ -56,6 +57,7 @@ describe("App", () => {
       can_undo: false,
       can_redo: false,
     });
+    useUiStore.setState({ selectedSlots: new Set() });
   });
 
   afterEach(async () => {
@@ -65,6 +67,7 @@ describe("App", () => {
       }
     });
     document.body.replaceChildren();
+    useUiStore.setState({ selectedSlots: new Set() });
   });
 
   it("renders the empty document shell", async () => {
@@ -143,5 +146,103 @@ describe("App", () => {
     expect(container.textContent).toContain("report.pdf");
     expect(container.textContent).toContain("1 file");
     expect(container.textContent).toContain("2 pages");
+  });
+
+  it("removes the selected slots with Delete", async () => {
+    const loaded = {
+      slots: [
+        { id: 1, source: 10, page: 0 },
+        { id: 2, source: 10, page: 1 },
+      ],
+      sources: [
+        {
+          id: 10,
+          path: "/documents/report.pdf",
+          file_name: "report.pdf",
+          kind: "pdf",
+          grouping: "grouped",
+          page_count: 2,
+          status: { kind: "ready" as const },
+        },
+      ],
+      can_undo: false,
+      can_redo: false,
+    };
+    const removed = { ...loaded, slots: [loaded.slots[0]], can_undo: true };
+    usePlanStore.getState().setSnapshot(loaded);
+    useUiStore.setState({ selectedSlots: new Set([2]) });
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "remove_slots" ? removed : new Uint8Array([1, 2, 3])),
+    );
+    await renderApp();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Delete",
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(invoke).toHaveBeenCalledWith("remove_slots", { slotIds: [2] });
+    expect(usePlanStore.getState().slots).toEqual([loaded.slots[0]]);
+  });
+
+  it("does not remove slots while a text input has focus", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [],
+      sources: [],
+      can_undo: false,
+      can_redo: false,
+    });
+    useUiStore.setState({ selectedSlots: new Set([2]) });
+    const input = document.createElement("input");
+    document.body.append(input);
+    await renderApp();
+    invoke.mockClear();
+    input.focus();
+
+    await act(async () => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Delete",
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("selects every slot with the platform modifier and A, and clears it with Escape", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [
+        { id: 1, source: 10, page: 0 },
+        { id: 2, source: 10, page: 1 },
+      ],
+      sources: [],
+      can_undo: false,
+      can_redo: false,
+    });
+    await renderApp();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ctrlKey: true, key: "a" }),
+      );
+    });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2]));
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
+      );
+    });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set());
   });
 });

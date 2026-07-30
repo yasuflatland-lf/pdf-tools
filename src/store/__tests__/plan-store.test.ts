@@ -18,7 +18,7 @@ function source(id: number, grouping: string): SourceFileDto {
 // `setSnapshot` reaches into the singleton UI store, so each test starts from a
 // known expansion state rather than whatever the previous one left behind.
 beforeEach(() => {
-  useUiStore.setState({ expandedSources: new Set() });
+  useUiStore.setState({ expandedSources: new Set(), selectedSlots: new Set() });
 });
 
 describe("createPlanStore", () => {
@@ -64,6 +64,20 @@ describe("createPlanStore", () => {
     expect(store.getState().canRedo).toBe(true);
   });
 
+  it("drops selected slots that the snapshot no longer contains", () => {
+    useUiStore.getState().selectSlots([1, 2]);
+    const store = createPlanStore();
+
+    store.getState().setSnapshot({
+      slots: [{ id: 2, source: 10, page: 1 }],
+      sources: [source(10, "grouped")],
+      can_undo: true,
+      can_redo: false,
+    });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+  });
+
   it("re-collapses a source that is grouped again after being ungrouped", () => {
     const store = createPlanStore();
     useUiStore.getState().toggleExpanded(10);
@@ -98,6 +112,9 @@ describe("useUiStore", () => {
       setViewMode: expect.any(Function),
       toggleExpanded: expect.any(Function),
       pruneExpanded: expect.any(Function),
+      selectSlots: expect.any(Function),
+      clearSelection: expect.any(Function),
+      pruneSelected: expect.any(Function),
     });
   });
 });

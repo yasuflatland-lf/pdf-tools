@@ -36,6 +36,8 @@ export function createPlanStore() {
             .filter((source) => source.grouping === "grouped")
             .map((source) => source.id),
         );
+      // Removed slots must not leave keyboard actions pointing at stale ids.
+      useUiStore.getState().pruneSelected(snapshot.slots.map((slot) => slot.id));
       set({
         slots: snapshot.slots,
         sources: snapshot.sources,

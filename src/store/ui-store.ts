@@ -24,6 +24,9 @@ interface UiState {
   setViewMode: (mode: ViewMode) => void;
   toggleExpanded: (sourceId: number) => void;
   pruneExpanded: (sourceIds: number[]) => void;
+  selectSlots: (slotIds: number[]) => void;
+  clearSelection: () => void;
+  pruneSelected: (slotIds: number[]) => void;
 }
 
 export function createUiStore() {
@@ -58,6 +61,25 @@ export function createUiStore() {
       set({
         expandedSources: new Set([...current].filter((sourceId) => existing.has(sourceId))),
       });
+    },
+    selectSlots: (slotIds) => {
+      set({ selectedSlots: new Set(slotIds) });
+    },
+    // An already empty selection keeps its set, so Escape on nothing cannot
+    // re-render every card that subscribes to it.
+    clearSelection: () => {
+      if (get().selectedSlots.size > 0) {
+        set({ selectedSlots: new Set() });
+      }
+    },
+    pruneSelected: (slotIds) => {
+      const current = get().selectedSlots;
+      const existing = new Set(slotIds);
+      if ([...current].every((slotId) => existing.has(slotId))) {
+        return;
+      }
+
+      set({ selectedSlots: new Set([...current].filter((slotId) => existing.has(slotId))) });
     },
   }));
 }
