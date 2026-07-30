@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 thiserror = "2"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

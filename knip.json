@@ -1,0 +1,10 @@
+{
+  "entry": ["src/main.tsx", "vitest.config.ts"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignoreDependencies": [
+    "@tauri-apps/api",
+    "@tauri-apps/plugin-dialog",
+    "@tauri-apps/plugin-opener",
+    "tailwindcss"
+  ]
+}

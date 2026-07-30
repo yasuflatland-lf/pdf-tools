@@ -11,3 +11,15 @@ cargo-binstall = "1.21.1"
 [settings]
 # Fetch `cargo:` tools as prebuilt binaries via cargo-binstall.
 cargo.binstall = true
+
+[tasks.lint]
+description = "Run all linters"
+run = ["cargo clippy --workspace --all-targets -- -D warnings", "pnpm oxlint", "pnpm knip"]
+
+[tasks.fmt]
+description = "Check formatting"
+run = ["cargo fmt --all --check", "pnpm oxfmt --check"]
+
+[tasks.test]
+description = "Run all tests"
+run = ["cargo nextest run --workspace", "pnpm vitest run"]
