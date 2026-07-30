@@ -119,7 +119,9 @@ jobs:
           ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
         run: |
           set -euo pipefail
-          bundle_dir="src-tauri/target/universal-apple-darwin/release/bundle"
+          # `src-tauri` is a member of the root Cargo workspace, so Cargo writes
+          # to the workspace-level target directory, not to src-tauri/target.
+          bundle_dir="target/universal-apple-darwin/release/bundle"
           app="$(find "$bundle_dir/macos" -maxdepth 1 -name '*.app' -type d 2>/dev/null | head -n1 || true)"
           if [ -z "$app" ]; then
             app="$(printf '%s' "$ARTIFACT_PATHS" | jq -r '.[]' | sed 's/\r$//' | grep -E '\.app$' | head -n1 || true)"

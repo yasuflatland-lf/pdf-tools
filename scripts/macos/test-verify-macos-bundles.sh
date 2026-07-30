@@ -58,14 +58,23 @@ expect_success() {
   fi
 }
 
+# A non-zero exit alone is a weak assertion: a missing or broken verify script
+# fails every negative case for the wrong reason. Each negative case therefore
+# also pins the message that proves the intended check is what rejected it.
 expect_failure() {
   local label="$1"
-  shift
+  local expected="$2"
+  shift 2
   if "$@" >"${TEST_DIR}/last-command.log" 2>&1; then
-    fail "${label}"
-  else
-    pass "${label}"
+    fail "${label} (expected a non-zero exit)"
+    return
   fi
+  if ! grep -qF -- "${expected}" "${TEST_DIR}/last-command.log"; then
+    fail "${label} (expected output containing: ${expected})"
+    sed -n '1,120p' "${TEST_DIR}/last-command.log" >&2
+    return
+  fi
+  pass "${label}"
 }
 
 # POSITIVE: a signed app with signed PDFium and its license verifies.
@@ -94,7 +103,9 @@ codesign --force --sign - --timestamp=none \
   "${UNSIGNED_APP}/Contents/Resources/resources/pdfium/libpdfium.dylib" >/dev/null 2>&1
 if hdiutil create -volname SampleUnsigned -srcfolder "${UNSIGNED_DIR}" -ov -format UDZO \
   "${TEST_DIR}/unsigned.dmg" >/dev/null; then
+  # The rejection must happen after the image is mounted, on the embedded copy.
   expect_failure "unsigned app inside a disk image is rejected" \
+    "Verifying embedded .app" \
     "${VERIFY_SCRIPT}" "${SIGNED_APP}" "${TEST_DIR}/unsigned.dmg"
 else
   fail "unsigned app disk image fixture is created"
@@ -108,6 +119,7 @@ codesign --force --sign - --timestamp=none "${UNSIGNED_LIBRARY}" >/dev/null 2>&1
 codesign --remove-signature "${UNSIGNED_LIBRARY}" >/dev/null 2>&1
 codesign --force --deep --sign - --timestamp=none "${UNSIGNED_LIBRARY_APP}" >/dev/null 2>&1
 expect_failure "unsigned bundled PDFium library is rejected" \
+  "code object is not signed at all" \
   "${VERIFY_SCRIPT}" "${UNSIGNED_LIBRARY_APP}"
 
 # NEGATIVE: a signed app without the PDFium license is rejected.
@@ -116,6 +128,7 @@ make_app "${MISSING_LICENSE_APP}"
 rm "${MISSING_LICENSE_APP}/Contents/Resources/resources/pdfium/LicenseRef-PdfiumThirdParty.txt"
 sign_app "${MISSING_LICENSE_APP}"
 expect_failure "missing PDFium license is rejected" \
+  "Bundled LicenseRef-PdfiumThirdParty.txt was not found" \
   "${VERIFY_SCRIPT}" "${MISSING_LICENSE_APP}"
 
 # NEGATIVE: a signed app without the PDFium library is rejected.
@@ -124,6 +137,7 @@ make_app "${MISSING_LIBRARY_APP}"
 rm "${MISSING_LIBRARY_APP}/Contents/Resources/resources/pdfium/libpdfium.dylib"
 codesign --force --deep --sign - --timestamp=none "${MISSING_LIBRARY_APP}" >/dev/null 2>&1
 expect_failure "missing PDFium library is rejected" \
+  "Bundled libpdfium.dylib was not found" \
   "${VERIFY_SCRIPT}" "${MISSING_LIBRARY_APP}"
 
 if [[ "${FAILURES}" -gt 0 ]]; then
