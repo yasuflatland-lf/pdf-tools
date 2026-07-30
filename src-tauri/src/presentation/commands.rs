@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use pdf_tools_core::application::add_sources::AddSources;
 use pdf_tools_core::domain::geometry::RasterSpec;
 use pdf_tools_core::domain::ids::SlotId;
 use pdf_tools_core::domain::source::SourceKind;
@@ -11,7 +10,7 @@ use tauri::ipc::Response;
 use tauri::State;
 
 use super::dto::PlanSnapshot;
-use super::state::{AppDocument, AppState};
+use super::state::AppState;
 
 /// Managed application state for PDFium startup.
 pub struct PdfiumState(Result<Arc<PdfiumEngine>, String>);
@@ -39,18 +38,9 @@ pub fn pdfium_health(state: State<'_, PdfiumState>) -> Result<String, String> {
 /// the additions: the frontend renders a snapshot rather than applying a diff.
 pub fn add_sources_inner(state: &AppState, paths: Vec<String>) -> Result<PlanSnapshot, String> {
     let paths = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
-    let mut document = state.document();
-    let AppDocument { plan, sources, ids } = &mut *document;
-    let result = AddSources {
-        pdf: state.pdf(),
-        images: state.images(),
-    }
-    .execute(plan, sources, ids, &paths);
-
-    *plan = result.plan;
-    *sources = result.sources;
-
-    Ok(PlanSnapshot::from_document(plan, sources))
+    let mut session = state.session();
+    session.add_sources(state.pdf(), state.images(), &paths);
+    Ok(PlanSnapshot::from_session(&session))
 }
 
 #[tauri::command]
@@ -58,19 +48,99 @@ pub fn add_sources(state: State<'_, AppState>, paths: Vec<String>) -> Result<Pla
     add_sources_inner(&state, paths)
 }
 
+pub fn insert_at_inner(
+    state: &AppState,
+    at: usize,
+    slot_ids: Vec<u64>,
+) -> Result<PlanSnapshot, String> {
+    let slot_ids = slot_ids.into_iter().map(SlotId).collect::<Vec<_>>();
+    let mut session = state.session();
+    session.insert_at(at, &slot_ids);
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn insert_at(
+    state: State<'_, AppState>,
+    at: usize,
+    slot_ids: Vec<u64>,
+) -> Result<PlanSnapshot, String> {
+    insert_at_inner(&state, at, slot_ids)
+}
+
+pub fn reorder_inner(
+    state: &AppState,
+    from_start: usize,
+    from_end: usize,
+    to: usize,
+) -> Result<PlanSnapshot, String> {
+    let mut session = state.session();
+    session.reorder(from_start..from_end, to);
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn reorder(
+    state: State<'_, AppState>,
+    from_start: usize,
+    from_end: usize,
+    to: usize,
+) -> Result<PlanSnapshot, String> {
+    reorder_inner(&state, from_start, from_end, to)
+}
+
+pub fn remove_slots_inner(state: &AppState, slot_ids: Vec<u64>) -> Result<PlanSnapshot, String> {
+    let slot_ids = slot_ids.into_iter().map(SlotId).collect::<Vec<_>>();
+    let mut session = state.session();
+    session.remove(&slot_ids);
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn remove_slots(
+    state: State<'_, AppState>,
+    slot_ids: Vec<u64>,
+) -> Result<PlanSnapshot, String> {
+    remove_slots_inner(&state, slot_ids)
+}
+
+pub fn undo_inner(state: &AppState) -> Result<PlanSnapshot, String> {
+    let mut session = state.session();
+    // Empty history is a successful no-op; the unchanged snapshot is returned.
+    session.undo();
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn undo(state: State<'_, AppState>) -> Result<PlanSnapshot, String> {
+    undo_inner(&state)
+}
+
+pub fn redo_inner(state: &AppState) -> Result<PlanSnapshot, String> {
+    let mut session = state.session();
+    // Empty history is a successful no-op; the unchanged snapshot is returned.
+    session.redo();
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn redo(state: State<'_, AppState>) -> Result<PlanSnapshot, String> {
+    redo_inner(&state)
+}
+
 /// Renders one plan slot to PNG bytes. Split out of the command so tests can
 /// exercise it without a webview.
 pub fn rasterize_slot_inner(state: &AppState, slot_id: u64, width: u32) -> Result<Vec<u8>, String> {
     let (path, kind, page) = {
-        let document = state.document();
-        let slot = document
-            .plan
+        let session = state.session();
+        let slot = session
+            .plan()
             .slots()
             .iter()
             .find(|slot| slot.id == SlotId(slot_id))
             .ok_or_else(|| format!("slot {slot_id} was not found"))?;
-        let source = document
-            .sources
+        let source = session
+            .sources()
             .iter()
             .find(|source| source.id == slot.source)
             .ok_or_else(|| format!("source {} for slot {slot_id} was not found", slot.source.0))?;

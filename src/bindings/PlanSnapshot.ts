@@ -6,4 +6,4 @@ import type { SourceFileDto } from "./SourceFileDto";
  * The whole document as the frontend sees it. Commands return a full snapshot
  * rather than a diff, so the UI never has to replay operations itself.
  */
-export type PlanSnapshot = { slots: Array<PageSlotDto>, sources: Array<SourceFileDto>, };
+export type PlanSnapshot = { slots: Array<PageSlotDto>, sources: Array<SourceFileDto>, can_undo: boolean, can_redo: boolean, };

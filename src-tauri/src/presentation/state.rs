@@ -3,52 +3,39 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use pdf_tools_core::application::errors::PdfError;
 use pdf_tools_core::application::ports::{ComposePlan, ImageDecoder, MergeReport, PdfEngine};
+use pdf_tools_core::application::session::PlanSession;
 use pdf_tools_core::domain::geometry::{RasterImage, RasterSpec};
-use pdf_tools_core::domain::ids::{IdSequence, PageIndex};
-use pdf_tools_core::domain::plan::MergePlan;
-use pdf_tools_core::domain::source::{DocumentInfo, SourceFile};
-
-/// Everything the commands mutate: the ordered plan, the sources it refers to,
-/// and the sequence that hands out their identifiers.
-pub struct AppDocument {
-    pub plan: MergePlan,
-    pub sources: Vec<SourceFile>,
-    pub ids: IdSequence,
-}
+use pdf_tools_core::domain::ids::PageIndex;
+use pdf_tools_core::domain::source::DocumentInfo;
 
 /// The Tauri-managed application state.
 ///
 /// Engines are held behind `Arc<dyn _>` so tests can drive the commands with
-/// fakes instead of a real PDFium build. Undo is deliberately absent here; it
-/// arrives later, when `AppDocument` is replaced by a session type.
+/// fakes instead of a real PDFium build. `PlanSession` owns the document and
+/// its undo and redo history.
 pub struct AppState {
-    pub(crate) document: Mutex<AppDocument>,
+    pub(crate) session: Mutex<PlanSession>,
     pub(crate) pdf: Arc<dyn PdfEngine>,
     pub(crate) images: Arc<dyn ImageDecoder>,
 }
 
 impl AppState {
-    /// Creates an empty document backed by the given engines.
+    /// Creates an empty session backed by the given engines.
     pub fn with_engines(pdf: Arc<dyn PdfEngine>, images: Arc<dyn ImageDecoder>) -> Self {
         Self {
-            document: Mutex::new(AppDocument {
-                plan: MergePlan::default(),
-                sources: Vec::new(),
-                ids: IdSequence::default(),
-            }),
+            session: Mutex::new(PlanSession::new()),
             pdf,
             images,
         }
     }
 
-    /// Returns exclusive access to the document.
+    /// Returns exclusive access to the plan session.
     ///
     /// The fields are crate-private, so integration tests -- compiled as
     /// separate crates -- reach the state through these accessors. A poisoned
-    /// lock is recovered from rather than propagated: the document is plain
-    /// data, so a panic elsewhere leaves it usable.
-    pub fn document(&self) -> MutexGuard<'_, AppDocument> {
-        self.document
+    /// lock is recovered from rather than propagated.
+    pub fn session(&self) -> MutexGuard<'_, PlanSession> {
+        self.session
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
