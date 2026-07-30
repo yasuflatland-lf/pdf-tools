@@ -1,4 +1,5 @@
-use pdf_tools_core::domain::plan::{MergePlan, PageSlot};
+use pdf_tools_core::application::session::PlanSession;
+use pdf_tools_core::domain::plan::PageSlot;
 use pdf_tools_core::domain::source::{Grouping, SourceFile, SourceKind, SourceStatus};
 use serde::Serialize;
 use ts_rs::TS;
@@ -10,6 +11,8 @@ use ts_rs::TS;
 pub struct PlanSnapshot {
     pub slots: Vec<PageSlotDto>,
     pub sources: Vec<SourceFileDto>,
+    pub can_undo: bool,
+    pub can_redo: bool,
 }
 
 /// One page of one source at one position in the plan.
@@ -53,11 +56,18 @@ pub enum SourceStatusDto {
 }
 
 impl PlanSnapshot {
-    /// Projects the domain document onto the wire contract.
-    pub fn from_document(plan: &MergePlan, sources: &[SourceFile]) -> Self {
+    /// Projects the application session onto the wire contract.
+    pub fn from_session(session: &PlanSession) -> Self {
         Self {
-            slots: plan.slots().iter().map(PageSlotDto::from).collect(),
-            sources: sources.iter().map(SourceFileDto::from).collect(),
+            slots: session
+                .plan()
+                .slots()
+                .iter()
+                .map(PageSlotDto::from)
+                .collect(),
+            sources: session.sources().iter().map(SourceFileDto::from).collect(),
+            can_undo: session.can_undo(),
+            can_redo: session.can_redo(),
         }
     }
 }

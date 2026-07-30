@@ -4,7 +4,10 @@ pub mod presentation;
 use pdf_tools_core::application::ports::PdfEngine;
 use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
-use presentation::commands::{add_sources, pdfium_health, rasterize_slot, PdfiumState};
+use presentation::commands::{
+    add_sources, insert_at, pdfium_health, rasterize_slot, redo, remove_slots, reorder, undo,
+    PdfiumState,
+};
 use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -88,6 +91,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pdfium_health,
             add_sources,
+            insert_at,
+            reorder,
+            remove_slots,
+            undo,
+            redo,
             rasterize_slot
         ])
         .run(tauri::generate_context!())
