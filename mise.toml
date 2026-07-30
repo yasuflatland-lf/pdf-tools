@@ -11,3 +11,7 @@ cargo-binstall = "1.21.1"
 [settings]
 # Fetch `cargo:` tools as prebuilt binaries via cargo-binstall.
 cargo.binstall = true
+
+[tasks.fetch-pdfium]
+description = "Download and verify the pinned PDFium binary"
+run = "./scripts/fetch-pdfium.sh"
