@@ -23,3 +23,7 @@ run = ["cargo fmt --all --check", "pnpm oxfmt --check"]
 [tasks.test]
 description = "Run all tests"
 run = ["cargo nextest run --workspace", "pnpm vitest run"]
+
+[tasks.fetch-pdfium]
+description = "Download and verify the pinned PDFium binary"
+run = "./scripts/fetch-pdfium.sh"
