@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - LICENSE
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - LICENSE
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep Rust cache artifacts small while retaining useful backtraces.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned toolchain
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          cache: true
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: ". -> target"
+
+      # The PDFium shared library is git-ignored and fetched from a pinned
+      # release with SHA-256 verification. Integration tests load it at runtime,
+      # so it must be in place before Clippy compiles the test targets.
+      - name: Fetch pinned PDFium binary
+        run: mise run fetch-pdfium
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+
+      - name: Run Rust tests with coverage
+        run: cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
+
+      - name: Upload Rust coverage to Codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned frontend toolchain
+        uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+        with:
+          install_args: node pnpm
+          cache: true
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Type errors are invisible to Oxlint, so without this gate a change that
+      # alters a ts-rs generated type (for example adding a field to
+      # PlanSnapshot) can break every consumer and still reach a green CI.
+      - name: Type-check the frontend
+        run: pnpm exec tsc --noEmit
+
+      - name: Run Oxlint
+        run: pnpm oxlint
+
+      - name: Check frontend formatting
+        run: pnpm oxfmt --check
+
+      - name: Check unused frontend code
+        run: pnpm knip
+
+      - name: Run frontend tests
+        run: pnpm vitest run

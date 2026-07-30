@@ -1,0 +1,29 @@
+[tools]
+# Install rustfmt and clippy alongside rust so CI (mise-action) has them.
+# llvm-tools-preview is required by cargo-llvm-cov for source-based coverage.
+rust = { version = "1.97.1", components = "rustfmt,clippy,llvm-tools-preview" }
+node = "24.18.0"
+pnpm = "11.17.0"
+cargo-binstall = "1.21.1"
+"cargo:cargo-nextest" = "0.9.137"
+"cargo:cargo-llvm-cov" = "0.8.7"
+
+[settings]
+# Fetch `cargo:` tools as prebuilt binaries via cargo-binstall.
+cargo.binstall = true
+
+[tasks.lint]
+description = "Run all linters"
+run = ["cargo clippy --workspace --all-targets -- -D warnings", "pnpm oxlint", "pnpm knip"]
+
+[tasks.fmt]
+description = "Check formatting"
+run = ["cargo fmt --all --check", "pnpm oxfmt --check"]
+
+[tasks.test]
+description = "Run all tests"
+run = ["cargo nextest run --workspace", "pnpm vitest run"]
+
+[tasks.fetch-pdfium]
+description = "Download and verify the pinned PDFium binary"
+run = "./scripts/fetch-pdfium.sh"

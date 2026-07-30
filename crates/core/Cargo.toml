@@ -1,0 +1,16 @@
+[package]
+name = "pdf-tools-core"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif"] }
+pdfium-render = "0.9.3"
+thiserror = "2"
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
