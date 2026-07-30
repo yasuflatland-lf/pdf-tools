@@ -21,8 +21,8 @@ single byte leaving the machine.
 - Image pages are fitted to the **dominant page size** of the plan's PDF pages — the most frequent
   size, ties broken by first appearance, A4 portrait when the plan holds no PDF pages. The aspect
   ratio is preserved and the remaining area is white. Animated GIFs contribute their first frame.
-- Merge progress is streamed to the UI, and the merge runs off the command thread so the interface
-  stays responsive while it works.
+- The merge runs off the command thread, so the interface stays responsive while it works, and
+  `compose-progress` events report the page total to the UI.
 - The output directory is remembered between runs, defaulting to the OS Downloads folder.
 
 ### Building the plan
@@ -88,6 +88,9 @@ single byte leaving the machine.
   13.1–13.6 s and produce an 858.9 MB file, because images are embedded as uncompressed bitmaps.
   Merging PDF pages alone is effectively free (100 pages in 0.001 s). Passing the original JPEG
   stream through, or compressing on embed, is the fix.
+- **The progress bar does not advance page by page.** Every progress tick is emitted before the
+  merge engine starts, so the bar reaches 100% at once and the window then waits without further
+  feedback — most visible on the slow image path above.
 - **Scroll frame rate, real peak memory and cold start are not measured.** They are properties of
   the packaged app in a WebView, and every measurement so far was taken headlessly. See
   [`docs/architecture.md` § Service level objectives](docs/architecture.md#service-level-objectives)
