@@ -1,0 +1,58 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Temporary / build artifacts
+tmp/
+temp/
+dist/
+build/
+
+# Design docs and plans (kept local / mirrored to Notion, not committed)
+docs/superpowers/
+
+# Claude Code local plans (kept local, not committed)
+.claude/plans/
+
+# Superpowers visual-companion brainstorm artifacts (kept local)
+.superpowers/
+
+# Node
+node_modules/
+*.tsbuildinfo
+
+# Rust / Cargo (workspace target at repo root)
+/target/
+
+# Coverage artifacts (lcov from cargo-llvm-cov / vitest; uploaded to Codecov in CI)
+/lcov.info
+/coverage/
+
+# mise (local state)
+.mise.local.toml
+
+# local git worktrees
+/.claude/worktrees/
+
+# Self-signed code-signing artifacts
+cert-out/
+*.p12
+*.p12.base64
+
+# PDFium prebuilt binaries fetched by `mise run fetch-pdfium`.
+# Never committed: they are large, platform-specific, and reproducibly
+# re-fetched from a pinned version with SHA-256 verification.
+/src-tauri/resources/pdfium/
