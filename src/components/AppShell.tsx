@@ -1,7 +1,8 @@
+import type { SourceFileDto } from "../bindings/SourceFileDto";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
-import { countLabel } from "../lib/format";
 import { usePlanStore } from "../store/plan-store";
 import { DropZone } from "./DropZone";
+import { PageGrid } from "./PageGrid";
 import { Toolbar } from "./Toolbar";
 
 function statusLabel(status: SourceStatusDto): string {
@@ -14,8 +15,31 @@ function statusLabel(status: SourceStatusDto): string {
   return `Unreadable: ${status.reason}`;
 }
 
+/**
+ * Files that contribute no pages would otherwise vanish from the window, since
+ * the grid only shows slots. Proper error reporting is Task 29; until then this
+ * at least names the files that were dropped and did nothing.
+ */
+function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
+  return (
+    <ul className="space-y-2" aria-label="Unusable source files">
+      {sources.map((source) => (
+        <li
+          key={source.id}
+          className="rounded-lg border border-amber-700/60 bg-amber-950/40 px-4 py-2 text-sm"
+        >
+          <span className="font-medium text-amber-100">{source.file_name}</span>
+          <span className="text-amber-200/80"> · {statusLabel(source.status)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function AppShell() {
   const sources = usePlanStore((state) => state.sources);
+  const slotCount = usePlanStore((state) => state.slots.length);
+  const unusableSources = sources.filter((source) => source.status.kind !== "ready");
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
@@ -27,31 +51,23 @@ export function AppShell() {
       <Toolbar />
 
       <DropZone>
-        <main className="h-full overflow-y-auto px-6 py-6">
-          {sources.length === 0 ? (
-            <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-slate-700 text-center">
-              <div>
-                <p className="font-medium text-slate-200">Drop PDFs or images here</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  Source files will appear in this document.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <ul className="space-y-3" aria-label="Source files">
-              {sources.map((source) => (
-                <li
-                  key={source.id}
-                  className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3"
-                >
-                  <p className="truncate font-medium text-slate-100">{source.file_name}</p>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {countLabel(source.page_count, "page")} · {statusLabel(source.status)}
+        <main className="flex h-full flex-col gap-4 overflow-hidden px-6 py-6">
+          {unusableSources.length > 0 && <UnusableSources sources={unusableSources} />}
+
+          <div className="min-h-0 flex-1">
+            {slotCount === 0 ? (
+              <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-slate-700 text-center">
+                <div>
+                  <p className="font-medium text-slate-200">Drop PDFs or images here</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Source files will appear in this document.
                   </p>
-                </li>
-              ))}
-            </ul>
-          )}
+                </div>
+              </div>
+            ) : (
+              <PageGrid />
+            )}
+          </div>
         </main>
       </DropZone>
     </div>
