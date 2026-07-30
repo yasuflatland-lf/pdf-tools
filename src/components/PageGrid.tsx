@@ -1,13 +1,28 @@
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
+import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
-import { rasterizeSlot } from "../lib/tauri-api";
+import { rasterizeSlot, reorder } from "../lib/tauri-api";
 import { createThumbnailCache } from "../lib/thumbnail-cache";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { PageCard } from "./PageCard";
+import { SortableCard } from "./SortableCard";
 
 const CARD_MIN_WIDTH = 180;
 const GAP = 16;
@@ -19,6 +34,7 @@ interface DisplayCard {
   key: string;
   slot: PageSlotDto;
   source?: SourceFileDto;
+  start: number;
   pageCount: number;
   collapsed: boolean;
 }
@@ -36,17 +52,26 @@ export function PageGrid() {
   const [cache] = useState(() =>
     createThumbnailCache({ fetcher: rasterizeSlot, capacity: CACHE_CAPACITY }),
   );
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const cards = useMemo(() => {
     const sourcesById = new Map(sources.map((source) => [source.id, source]));
+    let start = 0;
 
     return groupContiguous(slots, sources).flatMap<DisplayCard>((group) => {
       const source = sourcesById.get(group.sourceId);
+      const groupStart = start;
+      start += group.pageCount;
+
       if (expandedSources.has(group.sourceId)) {
-        return group.slots.map((slot) => ({
+        return group.slots.map((slot, slotIndex) => ({
           key: `slot-${slot.id}`,
           slot,
           source,
+          start: groupStart + slotIndex,
           pageCount: 1,
           collapsed: false,
         }));
@@ -57,6 +82,7 @@ export function PageGrid() {
           key: group.key,
           slot: group.slots[0],
           source,
+          start: groupStart,
           pageCount: group.pageCount,
           collapsed: group.pageCount > 1,
         },
@@ -95,40 +121,76 @@ export function PageGrid() {
 
   useEffect(() => () => cache.release(), [cache]);
 
-  return (
-    <div ref={scrollRef} className="h-full overflow-y-auto" aria-label="Document pages">
-      <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
-        {renderedRows.map((virtualRow) => {
-          const rowCards = cards.slice(
-            virtualRow.index * columnCount,
-            (virtualRow.index + 1) * columnCount,
-          );
+  /**
+   * The only place a drag touches the backend. While the pointer moves,
+   * `rectSortingStrategy` shifts the cards with CSS transforms alone, so the
+   * drop costs exactly one IPC round trip instead of one per frame. The
+   * snapshot the command returns replaces the plan wholesale -- the grid never
+   * keeps a second, locally reordered copy of it.
+   */
+  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+    if (!over) {
+      return;
+    }
 
-          return (
-            <div
-              key={virtualRow.key}
-              className="absolute top-0 left-0 grid w-full gap-4 pb-4"
-              style={{
-                gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              {rowCards.map((card) => (
-                <PageCard
-                  key={card.key}
-                  cache={cache}
-                  collapsed={card.collapsed}
-                  fileName={card.source?.file_name ?? "Unknown source"}
-                  pageCount={card.pageCount}
-                  pageNumber={card.slot.page + 1}
-                  slotId={card.slot.id}
-                  thumbnailWidth={THUMBNAIL_WIDTH}
-                />
-              ))}
-            </div>
-          );
-        })}
+    const activeIndex = cards.findIndex((card) => card.key === active.id);
+    const overIndex = cards.findIndex((card) => card.key === over.id);
+    const target = computeDropTarget(cards, activeIndex, overIndex);
+    if (!target) {
+      return;
+    }
+
+    try {
+      const snapshot = await reorder(target.from[0], target.from[1], target.to);
+      usePlanStore.getState().setSnapshot(snapshot);
+    } catch (error) {
+      console.error("reorder failed", error);
+    }
+  };
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div ref={scrollRef} className="h-full overflow-y-auto" aria-label="Document pages">
+        <SortableContext items={cards.map((card) => card.key)} strategy={rectSortingStrategy}>
+          <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+            {renderedRows.map((virtualRow) => {
+              const rowCards = cards.slice(
+                virtualRow.index * columnCount,
+                (virtualRow.index + 1) * columnCount,
+              );
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  className="absolute top-0 left-0 grid w-full gap-4 pb-4"
+                  style={{
+                    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {rowCards.map((card) => {
+                    const fileName = card.source?.file_name ?? "Unknown source";
+
+                    return (
+                      <SortableCard key={card.key} id={card.key} label={fileName}>
+                        <PageCard
+                          cache={cache}
+                          collapsed={card.collapsed}
+                          fileName={fileName}
+                          pageCount={card.pageCount}
+                          pageNumber={card.slot.page + 1}
+                          slotId={card.slot.id}
+                          thumbnailWidth={THUMBNAIL_WIDTH}
+                        />
+                      </SortableCard>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </SortableContext>
       </div>
-    </div>
+    </DndContext>
   );
 }

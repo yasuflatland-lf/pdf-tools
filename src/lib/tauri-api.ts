@@ -8,3 +8,11 @@ export async function addSources(paths: string[]): Promise<PlanSnapshot> {
 export async function rasterizeSlot(slotId: number, width: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("rasterize_slot", { slotId, width });
 }
+
+export async function reorder(
+  fromStart: number,
+  fromEnd: number,
+  to: number,
+): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("reorder", { fromStart, fromEnd, to });
+}

@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PageSlotDto } from "../../bindings/PageSlotDto";
+import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
 import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
@@ -76,6 +77,44 @@ function giveEveryElementAViewport(): void {
     }
     Object.defineProperty(HTMLElement.prototype, name, { configurable: true, value });
   }
+}
+
+/**
+ * dnd-kit resolves a drop from the droppables' rects, and jsdom measures every
+ * element as zero-sized. Laying the sortable cards out as a row of 200px cells
+ * gives the keyboard sensor a geometry to move through.
+ */
+function layOutSortableCards(container: HTMLElement): HTMLElement[] {
+  const cards = [...container.querySelectorAll<HTMLElement>('[aria-roledescription="sortable"]')];
+
+  for (const [index, card] of cards.entries()) {
+    const left = index * 200;
+    const rect = {
+      x: left,
+      y: 0,
+      left,
+      top: 0,
+      right: left + 180,
+      bottom: 300,
+      width: 180,
+      height: 300,
+    };
+    Object.defineProperty(card, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ ...rect, toJSON: () => rect }),
+    });
+  }
+
+  return cards;
+}
+
+async function pressKey(target: HTMLElement, code: string): Promise<void> {
+  await act(async () => {
+    target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, code }));
+    // dnd-kit measures and reconciles across animation frames, which jsdom only
+    // runs on a timer.
+    await new Promise((resolve) => setTimeout(resolve, 32));
+  });
 }
 
 function stopMeasuringElements(): void {
@@ -155,6 +194,35 @@ describe("PageGrid", () => {
 
     expect(invoke).toHaveBeenCalledWith("rasterize_slot", expect.objectContaining({ slotId: 1 }));
     expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:thumbnail");
+  });
+
+  it("sends exactly one reorder command when a card is dropped on another", async () => {
+    const reordered: PlanSnapshot = {
+      slots: [
+        { id: 2, source: 10, page: 1 },
+        { id: 1, source: 10, page: 0 },
+        { id: 3, source: 10, page: 2 },
+      ],
+      sources: [source(10, "ungrouped", 3)],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "reorder" ? reordered : new Uint8Array([1, 2, 3])),
+    );
+    load(source(10, "ungrouped", 3), 3);
+
+    const container = await renderGrid();
+    const cards = layOutSortableCards(container);
+    // A keyboard drag: pick the first card up, step right onto the second, drop.
+    await pressKey(cards[0], "Space");
+    await pressKey(cards[0], "ArrowRight");
+    await pressKey(cards[0], "Space");
+
+    expect(invoke.mock.calls.filter((call) => call[0] === "reorder")).toEqual([
+      ["reorder", { fromStart: 0, fromEnd: 1, to: 1 }],
+    ]);
+    expect(usePlanStore.getState().slots.map((slot) => slot.id)).toEqual([2, 1, 3]);
   });
 
   it("falls back to a placeholder when rasterization fails", async () => {
