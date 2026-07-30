@@ -1,12 +1,16 @@
 pub mod logging;
 pub mod presentation;
 
+use pdf_tools_core::application::ports::PdfEngine;
+use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
-use presentation::commands::{pdfium_health, PdfiumState};
+use presentation::commands::{add_sources, pdfium_health, PdfiumState};
+use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::Manager;
 
-fn load_pdfium(app: &tauri::App) -> Result<PdfiumEngine, String> {
+fn load_pdfium(app: &tauri::App) -> Result<Arc<PdfiumEngine>, String> {
     let mut candidates = Vec::new();
     let mut last_error = None;
 
@@ -33,7 +37,7 @@ fn load_pdfium(app: &tauri::App) -> Result<PdfiumEngine, String> {
                     version = %engine.version(),
                     "PDFium loaded"
                 );
-                return Ok(engine);
+                return Ok(Arc::new(engine));
             }
             Err(error) => {
                 tracing::warn!(
@@ -67,11 +71,21 @@ pub fn run() {
             if let Err(error) = &pdfium {
                 tracing::error!(%error, "PDFium is unavailable");
             }
+            // The app still has to start when PDFium is missing, so the state
+            // falls back to an engine that reports the load failure per call.
+            let pdf_engine: Arc<dyn PdfEngine> = match &pdfium {
+                Ok(engine) => engine.clone(),
+                Err(error) => Arc::new(UnavailablePdfEngine::new(error.clone())),
+            };
+            app.manage(AppState::with_engines(
+                pdf_engine,
+                Arc::new(ImageCrateDecoder),
+            ));
             app.manage(PdfiumState::new(pdfium));
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pdfium_health])
+        .invoke_handler(tauri::generate_handler![pdfium_health, add_sources])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
 }
