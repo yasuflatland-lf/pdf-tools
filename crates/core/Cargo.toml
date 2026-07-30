@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+pdfium-render = "0.9.3"
 thiserror = "2"
 
 [dev-dependencies]

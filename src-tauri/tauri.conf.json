@@ -24,6 +24,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "copyright": "© 2026 Yasuyuki Takeo"
+    "copyright": "© 2026 Yasuyuki Takeo",
+    "resources": ["resources/pdfium/*"]
   }
 }
