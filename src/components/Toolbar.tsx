@@ -7,11 +7,27 @@ import { countLabel } from "../lib/format";
 import { defaultOutputDir, joinPath, parentDir, rememberOutputDir } from "../lib/output-dir";
 import { compose, onComposeProgress, redo, undo } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
+import { blamedFiles, ErrorDialog } from "./ErrorDialog";
 import { ProgressBar } from "./ProgressBar";
 
 interface MergeResult {
   dest: string;
   report: MergeReportDto;
+}
+
+interface MergeFailure {
+  files: string[];
+  message: string;
+}
+
+function errorMessage(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 async function showInFolder(dest: string): Promise<void> {
@@ -30,7 +46,11 @@ export function Toolbar() {
   const [isMerging, setIsMerging] = useState(false);
   const [progress, setProgress] = useState<ComposeProgressDto>({ done: 0, total: 0 });
   const [result, setResult] = useState<MergeResult | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<MergeFailure | null>(null);
+  // Dismissing the dialog must not erase the failure itself: the toolbar keeps
+  // its marker until the next merge, so a merge that produced nothing is never
+  // mistaken for one that has not been run.
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const performUndo = useCallback(async () => {
     try {
@@ -82,7 +102,8 @@ export function Toolbar() {
       setIsMerging(true);
       setProgress({ done: 0, total: 0 });
       setResult(null);
-      setFailed(false);
+      setFailure(null);
+      setIsDialogOpen(false);
 
       let unlisten: (() => void) | undefined;
       try {
@@ -94,7 +115,12 @@ export function Toolbar() {
       }
     } catch (error) {
       console.error("compose failed", error);
-      setFailed(true);
+      const message = errorMessage(error);
+      setFailure({
+        files: blamedFiles(message, usePlanStore.getState().sources),
+        message,
+      });
+      setIsDialogOpen(true);
     } finally {
       setIsMerging(false);
     }
@@ -141,7 +167,7 @@ export function Toolbar() {
             </button>
           </>
         )}
-        {failed && <span className="text-red-400">Merge failed</span>}
+        {failure && <span className="text-red-400">Merge failed</span>}
         <button
           className="rounded-md bg-sky-600 px-4 py-1.5 font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           disabled={pageCount === 0 || isMerging}
@@ -151,6 +177,13 @@ export function Toolbar() {
           Merge
         </button>
       </div>
+      {failure && isDialogOpen && (
+        <ErrorDialog
+          files={failure.files}
+          message={failure.message}
+          onClose={() => setIsDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

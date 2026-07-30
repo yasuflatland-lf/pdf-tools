@@ -144,4 +144,61 @@ describe("App", () => {
     expect(container.textContent).toContain("1 file");
     expect(container.textContent).toContain("2 pages");
   });
+
+  it("keeps a source that cannot be merged on screen with its reason", async () => {
+    invoke.mockResolvedValue({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [
+        {
+          id: 10,
+          path: "/documents/photo.png",
+          file_name: "photo.png",
+          kind: "image",
+          grouping: "grouped",
+          page_count: 1,
+          status: { kind: "ready" },
+        },
+        {
+          id: 11,
+          path: "/documents/locked.pdf",
+          file_name: "locked.pdf",
+          kind: "pdf",
+          grouping: "grouped",
+          page_count: 0,
+          status: { kind: "encrypted" },
+        },
+        {
+          id: 12,
+          path: "/documents/damaged.pdf",
+          file_name: "damaged.pdf",
+          kind: "pdf",
+          grouping: "grouped",
+          page_count: 0,
+          status: { kind: "unreadable", reason: "broken xref" },
+        },
+      ],
+      can_undo: true,
+      can_redo: false,
+    });
+    const container = await renderApp();
+
+    await act(async () => {
+      await dragDrop.handler?.({
+        payload: {
+          type: "drop",
+          paths: ["/documents/photo.png", "/documents/locked.pdf", "/documents/damaged.pdf"],
+          position: { x: 20, y: 30 },
+        },
+      });
+    });
+
+    const unusable = container.querySelector('[aria-label="Unusable source files"]');
+    expect(unusable?.textContent).toContain("locked.pdf");
+    expect(unusable?.textContent).toMatch(/パスワード/);
+    expect(unusable?.textContent).toContain("damaged.pdf");
+    expect(unusable?.textContent).toContain("broken xref");
+    // The readable source keeps its own card and is not dimmed with the others.
+    expect(unusable?.textContent).not.toContain("photo.png");
+    expect(container.querySelectorAll(".opacity-60")).toHaveLength(2);
+  });
 });

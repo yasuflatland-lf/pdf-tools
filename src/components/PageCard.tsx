@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import type { SourceStatusDto } from "../bindings/SourceStatusDto";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { countLabel } from "../lib/format";
+import { ErrorBadge } from "./ErrorBadge";
 
 interface PageCardProps {
   cache: ThumbnailCache;
@@ -10,6 +12,35 @@ interface PageCardProps {
   pageNumber: number;
   slotId: number;
   thumbnailWidth: number;
+}
+
+/**
+ * The shared card chrome: a fixed-height preview area above the file name and a
+ * caption. Every card in the window keeps the same silhouette, so a source that
+ * cannot be merged reads as one of the cards rather than as a stray notice.
+ */
+function CardFrame({
+  caption,
+  className,
+  fileName,
+  preview,
+}: {
+  caption: ReactNode;
+  className: string;
+  fileName: string;
+  preview: ReactNode;
+}): ReactElement {
+  return (
+    <article className={`overflow-hidden rounded-xl border bg-slate-900 ${className}`}>
+      <div className="grid h-60 place-items-center bg-slate-800/70">{preview}</div>
+      <div className="px-3 py-3">
+        <p className="truncate font-medium text-slate-100" title={fileName}>
+          {fileName}
+        </p>
+        {caption}
+      </div>
+    </article>
+  );
 }
 
 export function PageCard({
@@ -48,9 +79,11 @@ export function PageCard({
   }, [cache, slotId, thumbnailWidth]);
 
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-      <div className="grid h-60 place-items-center bg-slate-800/70">
-        {thumbnailUrl ? (
+    <CardFrame
+      className="border-slate-800"
+      fileName={fileName}
+      preview={
+        thumbnailUrl ? (
           <img
             className="h-full w-full object-contain"
             src={thumbnailUrl}
@@ -64,16 +97,43 @@ export function PageCard({
             role="img"
             aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
           />
-        )}
-      </div>
-      <div className="px-3 py-3">
-        <p className="truncate font-medium text-slate-100" title={fileName}>
-          {fileName}
-        </p>
+        )
+      }
+      caption={
         <p className="mt-1 text-sm text-slate-400">
           {collapsed ? countLabel(pageCount, "page") : `Page ${pageNumber}`}
         </p>
-      </div>
-    </article>
+      }
+    />
+  );
+}
+
+/**
+ * A source that could not be read contributes no page slots, so it has no
+ * thumbnail to request and never reaches the page grid. It still gets a card:
+ * dropping a file and seeing nothing appear looks like the file was lost. The
+ * card is dimmed and badged so that it reads as excluded at a glance.
+ */
+export function SourceErrorCard({
+  fileName,
+  status,
+}: {
+  fileName: string;
+  status: SourceStatusDto;
+}): ReactElement {
+  return (
+    <CardFrame
+      className="border-amber-700/60 opacity-60"
+      fileName={fileName}
+      preview={
+        <div className="flex h-24 w-20 flex-col items-center justify-center gap-2 rounded border border-amber-700/60 bg-amber-950/40 text-center text-xs font-medium text-amber-100">
+          <span className="text-2xl" aria-hidden="true">
+            !
+          </span>
+          <span>結合対象外</span>
+        </div>
+      }
+      caption={<ErrorBadge status={status} />}
+    />
   );
 }

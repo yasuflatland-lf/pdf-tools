@@ -330,6 +330,41 @@ describe("Toolbar", () => {
     expect(mocks.revealItemInDir).toHaveBeenCalledWith(outputPath);
   });
 
+  it("names the failing file in a dialog and keeps the marker after it is closed", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [
+        {
+          id: 10,
+          path: "/documents/report.pdf",
+          file_name: "report.pdf",
+          kind: "pdf",
+          grouping: "grouped",
+          page_count: 1,
+          status: { kind: "ready" },
+        },
+      ],
+      can_undo: false,
+      can_redo: false,
+    });
+    mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
+    mocks.compose.mockRejectedValue("failed to read the PDF at /documents/report.pdf: broken xref");
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+
+    const dialog = container.querySelector('[role="alertdialog"]');
+    expect(dialog?.textContent).toContain("report.pdf");
+    expect(dialog?.textContent).toContain("broken xref");
+
+    await click(getButton(container, "閉じる"));
+
+    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(container.textContent).toContain("Merge failed");
+    consoleError.mockRestore();
+  });
+
   it("shows a failure, re-enables Merge, and removes the progress listener", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     loadOneSlot();
