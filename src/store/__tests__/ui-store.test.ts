@@ -27,4 +27,35 @@ describe("createUiStore", () => {
 
     expect(store.getState().expandedSources).toBe(expandedSources);
   });
+
+  it("replaces and clears the selected slots", () => {
+    const store = createUiStore();
+
+    store.getState().selectSlots([10, 20, 20]);
+    expect(store.getState().selectedSlots).toEqual(new Set([10, 20]));
+
+    store.getState().clearSelection();
+    expect(store.getState().selectedSlots).toEqual(new Set());
+  });
+
+  it("keeps the same empty selection when clearing it again", () => {
+    const store = createUiStore();
+    const selectedSlots = store.getState().selectedSlots;
+
+    store.getState().clearSelection();
+
+    expect(store.getState().selectedSlots).toBe(selectedSlots);
+  });
+
+  it("prunes missing slots without replacing an unchanged selection", () => {
+    const store = createUiStore();
+    store.getState().selectSlots([10, 20]);
+    const selectedSlots = store.getState().selectedSlots;
+
+    store.getState().pruneSelected([10, 20, 30]);
+    expect(store.getState().selectedSlots).toBe(selectedSlots);
+
+    store.getState().pruneSelected([20, 30]);
+    expect(store.getState().selectedSlots).toEqual(new Set([20]));
+  });
 });

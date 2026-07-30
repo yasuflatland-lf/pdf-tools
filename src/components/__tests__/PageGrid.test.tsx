@@ -149,7 +149,7 @@ describe("PageGrid", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ expandedSources: new Set() });
+    useUiStore.setState({ expandedSources: new Set(), selectedSlots: new Set() });
     stopMeasuringElements();
     vi.restoreAllMocks();
   });
@@ -257,6 +257,25 @@ describe("PageGrid", () => {
 
     expect(container.querySelector('[aria-label^="Expand "]')).toBeNull();
     expect(container.querySelector('[aria-label^="Collapse "]')).toBeNull();
+  });
+
+  it("moves focus and selection to a card with the arrow keys", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    await renderGrid();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "ArrowRight",
+        }),
+      );
+    });
+
+    expect(document.activeElement?.getAttribute("role")).toBe("option");
+    expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1]));
   });
 
   it("shows a thumbnail once the rasterized bytes arrive", async () => {

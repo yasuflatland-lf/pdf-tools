@@ -17,6 +17,7 @@ import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
 import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
+import { nextFocusIndex, resolveShortcut } from "../lib/keyboard";
 import { rasterizeSlot, reorder } from "../lib/tauri-api";
 import { createThumbnailCache } from "../lib/thumbnail-cache";
 import { usePlanStore } from "../store/plan-store";
@@ -38,6 +39,7 @@ interface DisplayCard {
   pageCount: number;
   collapsed: boolean;
   collapsible: boolean;
+  slotIds: number[];
 }
 
 function getColumnCount(width: number): number {
@@ -48,8 +50,10 @@ export function PageGrid() {
   const slots = usePlanStore((state) => state.slots);
   const sources = usePlanStore((state) => state.sources);
   const expandedSources = useUiStore((state) => state.expandedSources);
+  const selectedSlots = useUiStore((state) => state.selectedSlots);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const [cache] = useState(() =>
     createThumbnailCache({ fetcher: rasterizeSlot, capacity: CACHE_CAPACITY }),
   );
@@ -77,6 +81,7 @@ export function PageGrid() {
           pageCount: 1,
           collapsed: false,
           collapsible,
+          slotIds: [slot.id],
         }));
       }
 
@@ -89,6 +94,7 @@ export function PageGrid() {
           pageCount: group.pageCount,
           collapsed: group.pageCount > 1,
           collapsible,
+          slotIds: group.slotIds,
         },
       ];
     });
@@ -126,6 +132,40 @@ export function PageGrid() {
   useEffect(() => () => cache.release(), [cache]);
 
   /**
+   * Arrow navigation. It belongs to the grid because only the grid knows how
+   * many cards there are and how many fit in a row, and the selection follows
+   * the focus so that Delete always acts on the card the user is looking at.
+   */
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // dnd-kit's keyboard sensor steers a picked-up card with the same arrows
+      // and calls `preventDefault` while it does; moving the focus as well would
+      // drag one card and select another.
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      // `nextFocusIndex` yields null for every action that is not a focus move,
+      // which is how the other shortcuts stay the concern of their own handler.
+      const action = resolveShortcut(event);
+      const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
+      const next =
+        action === null ? null : nextFocusIndex(action, current, cards.length, columnCount);
+      if (next === null) {
+        return;
+      }
+
+      event.preventDefault();
+      setFocusedIndex(next);
+      rowVirtualizer.scrollToIndex(Math.floor(next / columnCount));
+      useUiStore.getState().selectSlots(cards[next].slotIds);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cards, columnCount, focusedIndex, rowVirtualizer]);
+
+  /**
    * The only place a drag touches the backend. While the pointer moves,
    * `rectSortingStrategy` shifts the cards with CSS transforms alone, so the
    * drop costs exactly one IPC round trip instead of one per frame. The
@@ -154,7 +194,13 @@ export function PageGrid() {
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div ref={scrollRef} className="h-full overflow-y-auto" aria-label="Document pages">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto"
+        aria-label="Document pages"
+        role="listbox"
+        aria-multiselectable="true"
+      >
         <SortableContext items={cards.map((card) => card.key)} strategy={rectSortingStrategy}>
           <div className="relative w-full" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
             {renderedRows.map((virtualRow) => {
@@ -172,8 +218,9 @@ export function PageGrid() {
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  {rowCards.map((card) => {
+                  {rowCards.map((card, positionInRow) => {
                     const fileName = card.source?.file_name ?? "Unknown source";
+                    const cardIndex = virtualRow.index * columnCount + positionInRow;
 
                     return (
                       <SortableCard key={card.key} id={card.key} label={fileName}>
@@ -190,6 +237,8 @@ export function PageGrid() {
                           pageNumber={card.slot.page + 1}
                           slotId={card.slot.id}
                           thumbnailWidth={THUMBNAIL_WIDTH}
+                          focused={focusedIndex === cardIndex}
+                          selected={card.slotIds.every((slotId) => selectedSlots.has(slotId))}
                         />
                       </SortableCard>
                     );

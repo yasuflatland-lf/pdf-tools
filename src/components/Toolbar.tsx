@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ComposeProgressDto } from "../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../bindings/MergeReportDto";
 import { countLabel } from "../lib/format";
+import { resolveShortcut } from "../lib/keyboard";
 import { defaultOutputDir, joinPath, parentDir, rememberOutputDir } from "../lib/output-dir";
 import { compose, onComposeProgress, redo, undo } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
@@ -50,17 +51,20 @@ export function Toolbar() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") {
+      const action = resolveShortcut(event);
+      if (action !== "undo" && action !== "redo") {
+        return;
+      }
+      if (event.defaultPrevented) {
         return;
       }
 
-      const wantsRedo = event.shiftKey;
-      if (isMerging || (wantsRedo ? !canRedo : !canUndo)) {
+      if (isMerging || (action === "redo" ? !canRedo : !canUndo)) {
         return;
       }
 
       event.preventDefault();
-      void (wantsRedo ? performRedo() : performUndo());
+      void (action === "redo" ? performRedo() : performUndo());
     };
 
     window.addEventListener("keydown", handleKeyDown);

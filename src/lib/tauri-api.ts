@@ -20,6 +20,10 @@ export async function reorder(
   return invoke<PlanSnapshot>("reorder", { fromStart, fromEnd, to });
 }
 
+export async function removeSlots(slotIds: number[]): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("remove_slots", { slotIds });
+}
+
 export async function undo(): Promise<PlanSnapshot> {
   return invoke<PlanSnapshot>("undo");
 }

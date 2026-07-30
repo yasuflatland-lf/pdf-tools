@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { countLabel } from "../lib/format";
 
@@ -10,6 +10,8 @@ interface PageCardProps {
   pageNumber: number;
   slotId: number;
   thumbnailWidth: number;
+  focused?: boolean;
+  selected?: boolean;
 }
 
 export function PageCard({
@@ -20,7 +22,10 @@ export function PageCard({
   pageNumber,
   slotId,
   thumbnailWidth,
+  focused,
+  selected,
 }: PageCardProps) {
+  const cardRef = useRef<HTMLElement>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string>();
   const [failed, setFailed] = useState(false);
 
@@ -47,8 +52,27 @@ export function PageCard({
     };
   }, [cache, slotId, thumbnailWidth]);
 
+  // Arrow navigation only moves an index; the card the index lands on is what
+  // takes the DOM focus. A card scrolled into view by the virtualizer mounts
+  // already focused, so this also covers the rows that were not rendered yet.
+  useEffect(() => {
+    if (focused) {
+      cardRef.current?.focus();
+    }
+  }, [focused]);
+
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+    <article
+      ref={cardRef}
+      role="option"
+      aria-selected={selected === true}
+      // A roving tabindex: only the focused card is a tab stop, so Tab crosses
+      // the grid instead of walking through every page in the document.
+      tabIndex={focused ? 0 : -1}
+      className={`overflow-hidden rounded-xl border bg-slate-900 ${
+        selected ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-800"
+      }`}
+    >
       <div className="grid h-60 place-items-center bg-slate-800/70">
         {thumbnailUrl ? (
           <img
