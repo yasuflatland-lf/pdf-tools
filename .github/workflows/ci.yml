@@ -41,6 +41,12 @@ jobs:
         with:
           workspaces: ". -> target"
 
+      # The PDFium shared library is git-ignored and fetched from a pinned
+      # release with SHA-256 verification. Integration tests load it at runtime,
+      # so it must be in place before Clippy compiles the test targets.
+      - name: Fetch pinned PDFium binary
+        run: mise run fetch-pdfium
+
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
