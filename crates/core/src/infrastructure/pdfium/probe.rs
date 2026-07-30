@@ -43,14 +43,13 @@ impl PdfEngine for PdfiumEngine {
         })
     }
 
-    /// Rasterization is implemented in task #14.
     fn rasterize(
         &self,
-        _src: &Path,
-        _page: PageIndex,
-        _spec: RasterSpec,
+        src: &Path,
+        page: PageIndex,
+        spec: RasterSpec,
     ) -> Result<RasterImage, PdfError> {
-        todo!()
+        super::rasterize::rasterize_page(self, src, page, spec)
     }
 
     /// Composition is implemented in task #24.
@@ -59,7 +58,7 @@ impl PdfEngine for PdfiumEngine {
     }
 }
 
-fn map_load_error(src: &Path, error: PdfiumError) -> PdfError {
+pub(super) fn map_load_error(src: &Path, error: PdfiumError) -> PdfError {
     match error {
         PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::PasswordError) => {
             PdfError::Encrypted {
