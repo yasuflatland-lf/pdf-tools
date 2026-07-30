@@ -49,6 +49,23 @@ describe("createThumbnailCache", () => {
     expect(revoke).toHaveBeenCalledTimes(1);
   });
 
+  // Counting revocations cannot tell LRU apart from plain insertion order: both
+  // discard exactly one entry here. Naming the revoked URL is what pins the
+  // eviction to the entry that went untouched.
+  it("keeps the re-read entry and evicts the one that went untouched", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    const fetcher = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
+    const cache = createThumbnailCache({ fetcher, capacity: 2 });
+
+    const first = await cache.get(1, 200);
+    const second = await cache.get(2, 200);
+    await cache.get(1, 200);
+    await cache.get(3, 200);
+
+    expect(revoke).toHaveBeenCalledWith(second);
+    expect(revoke).not.toHaveBeenCalledWith(first);
+  });
+
   it("releases every cached object URL", async () => {
     const revoke = vi.spyOn(URL, "revokeObjectURL");
     const fetcher = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]));
