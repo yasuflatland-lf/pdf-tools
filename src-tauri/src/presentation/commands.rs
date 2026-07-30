@@ -2,7 +2,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use pdf_tools_core::application::add_sources::AddSources;
+use pdf_tools_core::domain::geometry::RasterSpec;
+use pdf_tools_core::domain::ids::SlotId;
+use pdf_tools_core::domain::source::SourceKind;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
+use pdf_tools_core::infrastructure::png::encode_png;
+use tauri::ipc::Response;
 use tauri::State;
 
 use super::dto::PlanSnapshot;
@@ -34,14 +39,11 @@ pub fn pdfium_health(state: State<'_, PdfiumState>) -> Result<String, String> {
 /// the additions: the frontend renders a snapshot rather than applying a diff.
 pub fn add_sources_inner(state: &AppState, paths: Vec<String>) -> Result<PlanSnapshot, String> {
     let paths = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
-    let mut document = state
-        .document
-        .lock()
-        .map_err(|_| "application document state is unavailable".to_owned())?;
+    let mut document = state.document();
     let AppDocument { plan, sources, ids } = &mut *document;
     let result = AddSources {
-        pdf: state.pdf.as_ref(),
-        images: state.images.as_ref(),
+        pdf: state.pdf(),
+        images: state.images(),
     }
     .execute(plan, sources, ids, &paths);
 
@@ -54,6 +56,57 @@ pub fn add_sources_inner(state: &AppState, paths: Vec<String>) -> Result<PlanSna
 #[tauri::command]
 pub fn add_sources(state: State<'_, AppState>, paths: Vec<String>) -> Result<PlanSnapshot, String> {
     add_sources_inner(&state, paths)
+}
+
+/// Renders one plan slot to PNG bytes. Split out of the command so tests can
+/// exercise it without a webview.
+pub fn rasterize_slot_inner(state: &AppState, slot_id: u64, width: u32) -> Result<Vec<u8>, String> {
+    let (path, kind, page) = {
+        let document = state.document();
+        let slot = document
+            .plan
+            .slots()
+            .iter()
+            .find(|slot| slot.id == SlotId(slot_id))
+            .ok_or_else(|| format!("slot {slot_id} was not found"))?;
+        let source = document
+            .sources
+            .iter()
+            .find(|source| source.id == slot.source)
+            .ok_or_else(|| format!("source {} for slot {slot_id} was not found", slot.source.0))?;
+        (source.path.clone(), source.kind, slot.page)
+    };
+
+    let image = match kind {
+        SourceKind::Pdf => state
+            .pdf()
+            .rasterize(
+                &path,
+                page,
+                RasterSpec {
+                    target_width_px: width,
+                },
+            )
+            .map_err(|error| error.to_string())?,
+        // Image sources are decoded at their native size because the port takes no target width.
+        SourceKind::Image => state
+            .images()
+            .decode_first_frame(&path)
+            .map_err(|error| error.to_string())?,
+    };
+
+    encode_png(&image).map_err(|error| error.to_string())
+}
+
+/// Returns the slot's thumbnail as a raw binary IPC body, so the PNG never
+/// passes through base64 or a JSON array of numbers.
+#[tauri::command]
+pub fn rasterize_slot(
+    state: State<'_, AppState>,
+    slot_id: u64,
+    width: u32,
+) -> Result<Response, String> {
+    rasterize_slot_inner(&state, slot_id, width).map(Response::new)
 }
 
 #[cfg(test)]

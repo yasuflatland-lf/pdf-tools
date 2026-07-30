@@ -64,7 +64,7 @@ pub(super) fn compose(
                 ComposeEntry::Image { path, fit_to } => {
                     let raster = ImageCrateDecoder
                         .decode_first_frame(path)
-                        .map_err(map_image_error)?;
+                        .map_err(|error| map_image_error(path, error))?;
                     let image = RgbaImage::from_raw(raster.width, raster.height, raster.rgba)
                         .map(DynamicImage::ImageRgba8)
                         .ok_or_else(|| PdfError::Unreadable {
@@ -146,13 +146,19 @@ fn write_error(path: &Path, reason: String) -> PdfError {
     }
 }
 
-fn map_image_error(error: ImageError) -> PdfError {
+/// Translates a decoder failure into a compose failure. `source` names the file
+/// being decoded, so variants that carry no path of their own stay attributable.
+fn map_image_error(source: &Path, error: ImageError) -> PdfError {
     match error {
         ImageError::Missing { path } => PdfError::Missing { path },
         ImageError::Unreadable { path, reason } => PdfError::Unreadable { path, reason },
         ImageError::UnsupportedFormat { path } => PdfError::Unreadable {
             path,
             reason: "unsupported image format".into(),
+        },
+        ImageError::EncodeFailed { reason } => PdfError::Unreadable {
+            path: source.to_path_buf(),
+            reason,
         },
     }
 }

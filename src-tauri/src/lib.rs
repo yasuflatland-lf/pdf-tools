@@ -4,7 +4,7 @@ pub mod presentation;
 use pdf_tools_core::application::ports::PdfEngine;
 use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
-use presentation::commands::{add_sources, pdfium_health, PdfiumState};
+use presentation::commands::{add_sources, pdfium_health, rasterize_slot, PdfiumState};
 use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -85,7 +85,11 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![pdfium_health, add_sources])
+        .invoke_handler(tauri::generate_handler![
+            pdfium_health,
+            add_sources,
+            rasterize_slot
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
 }

@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use pdf_tools_core::application::errors::PdfError;
 use pdf_tools_core::application::ports::{ComposePlan, ImageDecoder, MergeReport, PdfEngine};
@@ -39,6 +39,26 @@ impl AppState {
             pdf,
             images,
         }
+    }
+
+    /// Returns exclusive access to the document.
+    ///
+    /// The fields are crate-private, so integration tests -- compiled as
+    /// separate crates -- reach the state through these accessors. A poisoned
+    /// lock is recovered from rather than propagated: the document is plain
+    /// data, so a panic elsewhere leaves it usable.
+    pub fn document(&self) -> MutexGuard<'_, AppDocument> {
+        self.document
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    pub fn pdf(&self) -> &dyn PdfEngine {
+        self.pdf.as_ref()
+    }
+
+    pub fn images(&self) -> &dyn ImageDecoder {
+        self.images.as_ref()
     }
 }
 
