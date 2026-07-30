@@ -9,6 +9,8 @@ describe("createPlanStore", () => {
     store.getState().setSnapshot({
       slots: [{ id: 1, source: 10, page: 0 }],
       sources: [],
+      can_undo: false,
+      can_redo: false,
     });
 
     expect(store.getState().slots).toHaveLength(1);

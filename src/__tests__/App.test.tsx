@@ -50,7 +50,12 @@ describe("App", () => {
     onDragDropEvent.mockClear();
     unlisten.mockClear();
     dragDrop.handler = undefined;
-    usePlanStore.getState().setSnapshot({ slots: [], sources: [] });
+    usePlanStore.getState().setSnapshot({
+      slots: [],
+      sources: [],
+      can_undo: false,
+      can_redo: false,
+    });
   });
 
   afterEach(async () => {
