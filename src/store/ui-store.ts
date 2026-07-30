@@ -1,5 +1,18 @@
 import { create } from "zustand";
 
+const VIEW_MODE_KEY = "pdf-tools.view-mode";
+
+export type ViewMode = "grid" | "list";
+
+export function loadPersistedViewMode(): ViewMode {
+  try {
+    const stored = localStorage.getItem(VIEW_MODE_KEY);
+    return stored === "grid" || stored === "list" ? stored : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
 /**
  * View state that only the frontend owns. Nothing here is part of the document,
  * so it survives snapshot replacement untouched.
@@ -7,7 +20,8 @@ import { create } from "zustand";
 interface UiState {
   expandedSources: Set<number>;
   selectedSlots: Set<number>;
-  viewMode: "grid" | "list";
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
   toggleExpanded: (sourceId: number) => void;
   pruneExpanded: (sourceIds: number[]) => void;
 }
@@ -16,7 +30,15 @@ export function createUiStore() {
   return create<UiState>((set, get) => ({
     expandedSources: new Set(),
     selectedSlots: new Set(),
-    viewMode: "grid",
+    viewMode: loadPersistedViewMode(),
+    setViewMode: (viewMode) => {
+      set({ viewMode });
+      try {
+        localStorage.setItem(VIEW_MODE_KEY, viewMode);
+      } catch {
+        // The in-memory preference remains usable when storage is unavailable.
+      }
+    },
     toggleExpanded: (sourceId) => {
       const expandedSources = new Set(get().expandedSources);
       if (expandedSources.has(sourceId)) {

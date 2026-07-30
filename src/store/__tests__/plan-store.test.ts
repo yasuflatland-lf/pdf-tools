@@ -95,6 +95,7 @@ describe("useUiStore", () => {
       expandedSources: new Set(),
       selectedSlots: new Set(),
       viewMode: "grid",
+      setViewMode: expect.any(Function),
       toggleExpanded: expect.any(Function),
       pruneExpanded: expect.any(Function),
     });

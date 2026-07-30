@@ -1,19 +1,11 @@
 import type { SourceFileDto } from "../bindings/SourceFileDto";
-import type { SourceStatusDto } from "../bindings/SourceStatusDto";
+import { statusLabel } from "../lib/format";
 import { usePlanStore } from "../store/plan-store";
+import { useUiStore } from "../store/ui-store";
 import { DropZone } from "./DropZone";
 import { PageGrid } from "./PageGrid";
+import { PageList } from "./PageList";
 import { Toolbar } from "./Toolbar";
-
-function statusLabel(status: SourceStatusDto): string {
-  if (status.kind === "ready") {
-    return "Ready";
-  }
-  if (status.kind === "encrypted") {
-    return "Encrypted";
-  }
-  return `Unreadable: ${status.reason}`;
-}
 
 /**
  * Files that contribute no pages would otherwise vanish from the window, since
@@ -39,6 +31,7 @@ function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
 export function AppShell() {
   const sources = usePlanStore((state) => state.sources);
   const slotCount = usePlanStore((state) => state.slots.length);
+  const viewMode = useUiStore((state) => state.viewMode);
   const unusableSources = sources.filter((source) => source.status.kind !== "ready");
 
   return (
@@ -64,8 +57,10 @@ export function AppShell() {
                   </p>
                 </div>
               </div>
-            ) : (
+            ) : viewMode === "grid" ? (
               <PageGrid />
+            ) : (
+              <PageList />
             )}
           </div>
         </main>

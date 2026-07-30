@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { createUiStore } from "../ui-store";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createUiStore, loadPersistedViewMode } from "../ui-store";
 
 describe("createUiStore", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   it("toggles a source between expanded and collapsed", () => {
     const store = createUiStore();
     store.getState().toggleExpanded(10);
@@ -26,5 +31,38 @@ describe("createUiStore", () => {
     store.getState().pruneExpanded([10, 20]);
 
     expect(store.getState().expandedSources).toBe(expandedSources);
+  });
+
+  it("persists the view mode across sessions", () => {
+    const store = createUiStore();
+    store.getState().setViewMode("list");
+    expect(loadPersistedViewMode()).toBe("list");
+  });
+
+  it("defaults to grid when no view mode is stored", () => {
+    expect(createUiStore().getState().viewMode).toBe("grid");
+  });
+
+  it("restores a stored list view in a fresh store", () => {
+    localStorage.setItem("pdf-tools.view-mode", "list");
+
+    expect(createUiStore().getState().viewMode).toBe("list");
+  });
+
+  it("falls back to grid when the stored view mode is invalid", () => {
+    localStorage.setItem("pdf-tools.view-mode", "table");
+
+    expect(createUiStore().getState().viewMode).toBe("grid");
+  });
+
+  it("updates view mode when local storage rejects the write", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    const store = createUiStore();
+
+    store.getState().setViewMode("list");
+
+    expect(store.getState().viewMode).toBe("list");
   });
 });

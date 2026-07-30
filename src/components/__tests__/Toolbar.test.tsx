@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComposeProgressDto } from "../../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../../bindings/MergeReportDto";
 import { usePlanStore } from "../../store/plan-store";
+import { useUiStore } from "../../store/ui-store";
 import { Toolbar } from "../Toolbar";
 
 const mocks = vi.hoisted(() => ({
@@ -129,6 +130,7 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
+    useUiStore.setState({ viewMode: "grid" });
   });
 
   afterEach(async () => {
@@ -141,7 +143,29 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
+    useUiStore.setState({ viewMode: "grid" });
     vi.restoreAllMocks();
+  });
+
+  it("switches between grid and list views and reports the active mode", async () => {
+    const container = await renderToolbar();
+    const grid = getButton(container, "Grid");
+    const list = getButton(container, "List");
+
+    expect(grid.getAttribute("aria-pressed")).toBe("true");
+    expect(list.getAttribute("aria-pressed")).toBe("false");
+
+    await click(list);
+
+    expect(useUiStore.getState().viewMode).toBe("list");
+    expect(grid.getAttribute("aria-pressed")).toBe("false");
+    expect(list.getAttribute("aria-pressed")).toBe("true");
+
+    await click(grid);
+
+    expect(useUiStore.getState().viewMode).toBe("grid");
+    expect(grid.getAttribute("aria-pressed")).toBe("true");
+    expect(list.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("enables Merge only when the plan has pages", async () => {
