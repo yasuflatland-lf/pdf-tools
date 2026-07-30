@@ -404,7 +404,9 @@ fn compose_reports_progress_for_every_page() {
         .reports
         .lock()
         .expect("progress reports lock should not be poisoned");
-    assert_eq!(reports.last(), Some(&(2, 2)));
+    // Asserting the whole sequence, not just the last tick: reporting only the
+    // final tick would still satisfy `reports.last() == (2, 2)`.
+    assert_eq!(reports.as_slice(), &[(1, 2), (2, 2)]);
 }
 
 #[test]
