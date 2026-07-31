@@ -56,12 +56,15 @@ jobs:
       - name: Run Rust tests with coverage
         run: cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
 
+      # A silently dropped upload leaves Codecov reporting the previous commit's
+      # numbers, which reads as a passing coverage report rather than a missing
+      # one. CODECOV_TOKEN is set on this repository, so a failed upload means a
+      # real problem and must fail the job — hence no `continue-on-error` here.
       - name: Upload Rust coverage to Codecov
-        continue-on-error: true
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: lcov.info
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
   frontend:
