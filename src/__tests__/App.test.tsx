@@ -73,7 +73,9 @@ describe("App", () => {
   it("renders the empty document shell", async () => {
     const container = await renderApp();
 
-    expect(container.textContent).toContain("PDF Tools");
+    // The window title already names the app, so the shell starts at the
+    // toolbar and spends none of its height repeating that name.
+    expect(container.textContent).not.toContain("PDF Tools");
     expect(container.textContent).toContain("0 files");
     expect(container.textContent).toContain("0 pages");
     expect(onDragDropEvent).toHaveBeenCalledOnce();
