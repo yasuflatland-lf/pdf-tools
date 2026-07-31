@@ -223,7 +223,10 @@ fn an_image_becomes_a_page_of_the_requested_size() {
     engine().compose(&plan, &out).unwrap();
     let info = engine().probe(&out).unwrap();
     assert_eq!(info.page_count, 1);
-    assert!(info.page_sizes[0].approx_eq(&PageSize::A4_PORTRAIT));
+    assert_eq!(
+        info.page_sizes[0].size_class(),
+        PageSize::A4_PORTRAIT.size_class()
+    );
 }
 
 #[test]
