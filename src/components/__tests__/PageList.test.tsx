@@ -154,7 +154,6 @@ describe("PageList", () => {
     expect(container.querySelectorAll("article")).toHaveLength(1);
     expect(container.textContent).toContain("10.pdf");
     expect(container.textContent).toContain("3 pages");
-    expect(container.textContent).toContain("Ready");
   });
 
   it("expands a source into per-page rows when the UI store says so", async () => {
@@ -208,5 +207,22 @@ describe("PageList", () => {
       ["reorder", { fromStart: 0, fromEnd: 1, to: 1 }],
     ]);
     expect(usePlanStore.getState().slots.map((slot) => slot.id)).toEqual([2, 1, 3]);
+  });
+
+  it("shows a visible badge when a thumbnail cannot be rendered", async () => {
+    invoke.mockRejectedValue(new Error("boom"));
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.textContent).toContain("サムネイルを表示できません");
+  });
+
+  it("does not label every row with a status that cannot be anything but ready", async () => {
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.textContent).not.toContain("Ready");
   });
 });

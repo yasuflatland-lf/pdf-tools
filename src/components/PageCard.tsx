@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { countLabel } from "../lib/format";
 import { ErrorBadge } from "./ErrorBadge";
+import { useThumbnail } from "./useThumbnail";
 
 interface PageCardProps {
   cache: ThumbnailCache;
@@ -54,31 +55,7 @@ export function PageCard({
   thumbnailWidth,
   selected,
 }: PageCardProps) {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>();
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setThumbnailUrl(undefined);
-    setFailed(false);
-
-    void cache
-      .get(slotId, thumbnailWidth)
-      .then((url) => {
-        if (active && url) {
-          setThumbnailUrl(url);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setFailed(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [cache, slotId, thumbnailWidth]);
+  const { url: thumbnailUrl, failed } = useThumbnail(cache, slotId, thumbnailWidth);
 
   return (
     <CardFrame
@@ -97,11 +74,18 @@ export function PageCard({
         ) : (
           // A page-shaped placeholder keeps the card the same size before the
           // thumbnail arrives, so a scrolling grid never reflows.
-          <div
-            className="h-20 w-16 rounded border border-slate-600 bg-slate-700"
-            role="img"
-            aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
-          />
+          <div className="flex flex-col items-center">
+            <div
+              className="h-20 w-16 rounded border border-slate-600 bg-slate-700"
+              role="img"
+              aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
+            />
+            {failed && (
+              <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
+                サムネイルを表示できません
+              </p>
+            )}
+          </div>
         )
       }
       caption={

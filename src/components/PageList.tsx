@@ -51,7 +51,6 @@ export function PageList() {
                       pageCount={card.pageCount}
                       pageNumber={card.slot.page + 1}
                       slotId={card.slot.id}
-                      status={card.source?.status}
                       thumbnailWidth={THUMBNAIL_WIDTH}
                     />
                   </SortableCard>
