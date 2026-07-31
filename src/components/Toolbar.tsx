@@ -80,11 +80,11 @@ export function Toolbar() {
   return (
     <div className="relative flex h-12 items-center border-b border-slate-800 bg-slate-900/80 px-3.5 text-xs text-slate-400">
       <span>
-        {countLabel(fileCount, "file")}
+        <span>{countLabel(fileCount, "file")}</span>
         <span aria-hidden="true" className="px-1.5 text-slate-600">
           ·
         </span>
-        {countLabel(pageCount, "page")}
+        <span>{countLabel(pageCount, "page")}</span>
       </span>
 
       {/*
@@ -121,7 +121,9 @@ export function Toolbar() {
           <>
             <span className="flex items-center gap-1.5">
               <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
-              {fileName(result.dest)}
+              <span className="max-w-[12rem] truncate" title={result.dest}>
+                {fileName(result.dest)}
+              </span>
             </span>
             <button
               className="flex h-7 items-center gap-1.5 rounded-md border border-slate-700 px-2.5 text-slate-300 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-sky-500"

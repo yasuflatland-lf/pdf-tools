@@ -411,6 +411,27 @@ describe("Toolbar", () => {
     expect(mocks.revealItemInDir).toHaveBeenCalledWith(outputPath);
   });
 
+  it("titles the completion chip's file name with the full destination path", async () => {
+    const outputPath = "/Users/me/Documents/a-rather-long-file-name-that-would-need-truncating.pdf";
+    const pending = deferred<MergeReportDto>();
+    loadOneSlot();
+    mocks.save.mockResolvedValue(outputPath);
+    mocks.compose.mockReturnValue(pending.promise);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+
+    await act(async () => {
+      pending.resolve({ page_count: 1, bytes_written: 512 });
+      await pending.promise;
+    });
+
+    const named = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.getAttribute("title") === outputPath,
+    );
+    expect(named).not.toBeUndefined();
+  });
+
   it("names the failing file in a dialog and keeps the marker after it is closed", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usePlanStore.getState().setSnapshot({

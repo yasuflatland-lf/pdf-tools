@@ -10,6 +10,7 @@
 | Framework                   | Tauri 2 — one native app for macOS (universal) and Windows                                |
 | Frontend                    | Vite 7 + React 19 + TypeScript 5.9 + Tailwind v4 (`@tailwindcss/vite`) + Zustand 5        |
 | Virtualization / DnD        | `@tanstack/react-virtual` 3, `@dnd-kit/core` + `@dnd-kit/sortable`                        |
+| Icons                       | `lucide-react` 1.27 — the toolbar's icon set                                              |
 | Backend                     | Rust, DDD layered — workspace of pure `pdf-tools-core` + `src-tauri` presentation crate   |
 | PDF engine                  | PDFium via `pdfium-render` 0.9; the binary is a pinned prebuilt from `pdfium-binaries`    |
 | Image decoding              | `image` 0.25 (jpeg / png / gif features only)                                             |
