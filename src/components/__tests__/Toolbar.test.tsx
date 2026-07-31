@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComposeProgressDto } from "../../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../../bindings/MergeReportDto";
+import { shortcutHint } from "../../lib/keyboard";
 import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { AppShell } from "../AppShell";
@@ -383,7 +384,9 @@ describe("Toolbar", () => {
 
     expect(mocks.compose).toHaveBeenCalledWith(outputPath);
     expect(mocks.rememberOutputDir).toHaveBeenCalledWith("/Users/me/Documents");
-    expect(getButton(container, "Merge").disabled).toBe(true);
+    // The primary button renames itself while a merge runs, so it is looked up
+    // by the label the user actually sees.
+    expect(getButton(container, "Merging…").disabled).toBe(true);
 
     await act(async () => {
       mocks.progress.handler?.({ done: 1, total: 2 });
@@ -399,7 +402,9 @@ describe("Toolbar", () => {
 
     expect(getButton(container, "Merge").disabled).toBe(false);
     expect(container.textContent).toContain("book.pdf");
-    expect(container.textContent).toContain("3 pages");
+    // The completion chip carries the file name only; page totals stay in the
+    // left-hand readout, where they describe the plan rather than the output.
+    expect(container.textContent).not.toContain("3 pages");
     expect(mocks.unlisten).toHaveBeenCalledOnce();
 
     await click(getButton(container, "Show in folder"));
@@ -509,5 +514,45 @@ describe("Toolbar", () => {
     // single "exactly one of these" control rather than two loose buttons.
     expect(group?.querySelectorAll("button")).toHaveLength(2);
     expect(getButton(container, "Grid view").getAttribute("title")).toBe("Grid view");
+  });
+
+  it("names every centre action and spells its shortcut in the tooltip", async () => {
+    const container = await renderToolbar();
+
+    expect(getButton(container, "Undo").getAttribute("title")).toBe(
+      `Undo (${shortcutHint("undo", navigator.userAgent)})`,
+    );
+    expect(getButton(container, "Redo").getAttribute("title")).toBe(
+      `Redo (${shortcutHint("redo", navigator.userAgent)})`,
+    );
+    expect(getButton(container, "Grid view").getAttribute("aria-label")).toBe("Grid view");
+    expect(getButton(container, "List view").getAttribute("aria-label")).toBe("List view");
+  });
+
+  it("locks the history buttons and renames the primary button while merging", async () => {
+    const pending = deferred<MergeReportDto>();
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [],
+      can_undo: true,
+      can_redo: true,
+    });
+    mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
+    mocks.compose.mockReturnValue(pending.promise);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+
+    expect(getButton(container, "Undo").disabled).toBe(true);
+    expect(getButton(container, "Redo").disabled).toBe(true);
+    expect(getButton(container, "Merging…").disabled).toBe(true);
+
+    await act(async () => {
+      pending.resolve({ page_count: 1, bytes_written: 512 });
+      await pending.promise;
+    });
+
+    expect(getButton(container, "Undo").disabled).toBe(false);
+    expect(getButton(container, "Merge").disabled).toBe(false);
   });
 });
