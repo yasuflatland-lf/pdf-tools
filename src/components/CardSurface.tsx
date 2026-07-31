@@ -1,6 +1,6 @@
 import { DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import { createContext, useContext, useRef, type ReactNode } from "react";
+import { createContext, useContext, useRef, type ReactNode, type RefObject } from "react";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { useUiStore } from "../store/ui-store";
 import { SortableCard } from "./SortableCard";
@@ -11,6 +11,7 @@ interface CardSurfaceProps {
   rowHeight: number;
   viewMode: "grid" | "list";
   renderCard: (card: DisplayCard, thumbnailWidth: number) => ReactNode;
+  scrollRef?: RefObject<HTMLDivElement | null>;
   thumbnailWidth: number;
 }
 
@@ -29,16 +30,18 @@ export function CardSurface({
   rowHeight,
   viewMode,
   renderCard,
+  scrollRef,
   thumbnailWidth,
 }: CardSurfaceProps) {
   const selectedSlots = useUiStore((state) => state.selectedSlots);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const ownScrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = scrollRef ?? ownScrollRef;
   const { cache, cards, handleDragEnd, sensors } = usePageCards();
   const { rows, scrollToIndex, totalSize } = useCardRows({
     cards,
     columnCount,
     rowHeight,
-    scrollRef,
+    scrollRef: containerRef,
   });
   const focusedIndex = useCardFocus({ cards, columnCount, scrollToIndex });
 
@@ -46,7 +49,7 @@ export function CardSurface({
     <CardSurfaceCacheContext value={cache}>
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div
-          ref={scrollRef}
+          ref={containerRef}
           className="h-full overflow-y-auto"
           aria-label="Document pages"
           data-view-mode={viewMode}

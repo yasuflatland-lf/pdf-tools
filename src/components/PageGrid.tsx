@@ -15,12 +15,12 @@ function getColumnCount(width: number): number {
 
 export function PageGrid() {
   const selectedSlots = useUiStore((state) => state.selectedSlots);
-  const surfaceRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
 
   useLayoutEffect(() => {
     const measure = () => {
-      setColumnCount(getColumnCount(surfaceRef.current?.clientWidth ?? 0));
+      setColumnCount(getColumnCount(scrollRef.current?.clientWidth ?? 0));
     };
 
     measure();
@@ -29,21 +29,20 @@ export function PageGrid() {
   }, []);
 
   return (
-    <div ref={surfaceRef} className="h-full">
-      <CardSurface
-        columnCount={columnCount}
-        rowHeight={ROW_HEIGHT}
-        viewMode="grid"
-        renderCard={(card, thumbnailWidth) => (
-          <PageGridCard
-            card={card}
-            selected={card.slotIds.every((slotId) => selectedSlots.has(slotId))}
-            thumbnailWidth={thumbnailWidth}
-          />
-        )}
-        thumbnailWidth={THUMBNAIL_WIDTH}
-      />
-    </div>
+    <CardSurface
+      columnCount={columnCount}
+      rowHeight={ROW_HEIGHT}
+      viewMode="grid"
+      renderCard={(card, thumbnailWidth) => (
+        <PageGridCard
+          card={card}
+          selected={card.slotIds.every((slotId) => selectedSlots.has(slotId))}
+          thumbnailWidth={thumbnailWidth}
+        />
+      )}
+      scrollRef={scrollRef}
+      thumbnailWidth={THUMBNAIL_WIDTH}
+    />
   );
 }
 
