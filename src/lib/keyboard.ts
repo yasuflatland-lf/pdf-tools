@@ -86,6 +86,22 @@ export function resolveShortcut(event: ShortcutEvent): ShortcutAction | null {
   }
 }
 
+/** The actions whose shortcut is worth printing in a tooltip. */
+type HintableAction = Extract<ShortcutAction, "undo" | "redo">;
+
+/**
+ * How a shortcut is spelled for the reader. The user agent is a parameter
+ * rather than a global so the mapping stays testable without a DOM, like the
+ * rest of this file.
+ */
+export function shortcutHint(action: HintableAction, userAgent: string): string {
+  const isMac = /mac|iphone|ipad/i.test(userAgent);
+  if (isMac) {
+    return action === "redo" ? "⇧⌘Z" : "⌘Z";
+  }
+  return action === "redo" ? "Ctrl+Shift+Z" : "Ctrl+Z";
+}
+
 /**
  * Where an arrow key moves the card focus, clamped to the grid. Returns null for
  * every action that is not a focus move, so a caller can hand it whatever

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextFocusIndex, resolveShortcut, type ShortcutAction } from "../keyboard";
+import { nextFocusIndex, resolveShortcut, shortcutHint, type ShortcutAction } from "../keyboard";
 
 describe("resolveShortcut", () => {
   it("maps Delete and Backspace to removing the selection", () => {
@@ -74,4 +74,23 @@ describe("nextFocusIndex", () => {
       expect(nextFocusIndex(action, currentIndex, count, columns)).toBe(expected);
     },
   );
+});
+
+describe("shortcutHint", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+  const windows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
+  it("uses the macOS glyphs on a Mac", () => {
+    expect(shortcutHint("undo", mac)).toBe("⌘Z");
+    expect(shortcutHint("redo", mac)).toBe("⇧⌘Z");
+  });
+
+  it("spells the modifier out on every other platform", () => {
+    expect(shortcutHint("undo", windows)).toBe("Ctrl+Z");
+    expect(shortcutHint("redo", windows)).toBe("Ctrl+Shift+Z");
+  });
+
+  it("falls back to the spelled-out modifier when the user agent is unknown", () => {
+    expect(shortcutHint("undo", "")).toBe("Ctrl+Z");
+  });
 });
