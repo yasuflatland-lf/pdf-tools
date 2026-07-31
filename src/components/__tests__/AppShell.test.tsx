@@ -5,14 +5,19 @@ import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { AppShell } from "../AppShell";
 
-const { invoke, onDragDropEvent } = vi.hoisted(() => ({
+const { invoke, onDragDropEvent, removeSlots } = vi.hoisted(() => ({
   invoke: vi.fn(),
   onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
+  removeSlots: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent }),
+}));
+vi.mock("../../lib/tauri-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/tauri-api")>()),
+  removeSlots,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -48,6 +53,14 @@ async function click(button: HTMLButtonElement): Promise<void> {
   });
 }
 
+function deleteShortcut(): KeyboardEvent {
+  return new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: "Delete",
+  });
+}
+
 function loadPages(): void {
   usePlanStore.getState().setSnapshot({
     slots: [
@@ -74,6 +87,7 @@ describe("AppShell", () => {
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    removeSlots.mockReset();
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:thumbnail"),
@@ -122,5 +136,19 @@ describe("AppShell", () => {
 
     expect(container.textContent).toContain("Drop PDFs or images here");
     expect(container.querySelector('[data-view-mode="list"]')).toBeNull();
+  });
+
+  it("leaves Delete alone when the selection is empty", async () => {
+    useUiStore.getState().clearSelection();
+    await renderShell();
+    const event = deleteShortcut();
+
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(removeSlots).not.toHaveBeenCalled();
   });
 });

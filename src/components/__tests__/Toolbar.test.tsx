@@ -114,6 +114,15 @@ function deferred<T>(): {
   return { promise, resolve, reject };
 }
 
+function undoShortcut(): KeyboardEvent {
+  return new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    ctrlKey: true,
+    key: "z",
+  });
+}
+
 /** The macOS redo chord, which reports an upper-case `key` because of the shift. */
 function redoShortcut(): KeyboardEvent {
   return new KeyboardEvent("keydown", {
@@ -276,12 +285,7 @@ describe("Toolbar", () => {
       can_redo: true,
     });
     await renderToolbar();
-    const event = new KeyboardEvent("keydown", {
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: true,
-      key: "z",
-    });
+    const event = undoShortcut();
 
     await act(async () => {
       window.dispatchEvent(event);
@@ -292,6 +296,22 @@ describe("Toolbar", () => {
     expect(mocks.undo).toHaveBeenCalledOnce();
     expect(usePlanStore.getState().slots).toEqual([]);
     expect(usePlanStore.getState().canRedo).toBe(true);
+  });
+
+  it("ignores the undo shortcut when there is nothing to undo", async () => {
+    usePlanStore
+      .getState()
+      .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: true });
+    await renderToolbar();
+
+    const ignored = undoShortcut();
+    await act(async () => {
+      window.dispatchEvent(ignored);
+      await Promise.resolve();
+    });
+
+    expect(ignored.defaultPrevented).toBe(false);
+    expect(mocks.undo).not.toHaveBeenCalled();
   });
 
   it("redoes on the shifted shortcut and ignores it when there is nothing to redo", async () => {
@@ -463,7 +483,7 @@ describe("Toolbar", () => {
     expect(blamed).toEqual(["report.pdf"]);
     expect(dialog?.textContent).toContain("broken xref");
 
-    await click(getButton(container, "閉じる"));
+    await click(getButton(container, "Close"));
 
     expect(container.querySelector('[role="alertdialog"]')).toBeNull();
     expect(container.textContent).toContain("Merge failed");

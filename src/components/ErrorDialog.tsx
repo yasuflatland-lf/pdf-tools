@@ -40,6 +40,7 @@ export function ErrorDialog({
   const filesLabelId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
 
+  // The modal owns Escape, so this listener must remain outside useShortcuts.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -67,13 +68,13 @@ export function ErrorDialog({
         aria-modal="true"
       >
         <h2 id={headingId} className="text-lg font-semibold text-red-200">
-          結合できませんでした
+          Merge failed
         </h2>
         <p className="mt-3 break-words text-sm text-slate-300">{message}</p>
         {files.length > 0 && (
           <div className="mt-4">
             <p id={filesLabelId} className="text-sm font-medium text-slate-200">
-              対象ファイル
+              Affected files
             </p>
             <ul
               className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300"
@@ -92,7 +93,7 @@ export function ErrorDialog({
             onClick={onClose}
             type="button"
           >
-            閉じる
+            Close
           </button>
         </div>
       </section>

@@ -1,8 +1,17 @@
+const LATTICE_PT: f32 = 1.0;
+
 /// The dimensions of a page in points.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PageSize {
     pub width_pt: f32,
     pub height_pt: f32,
+}
+
+/// A page-size equivalence class on the one-point lattice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SizeClass {
+    width_cells: i32,
+    height_cells: i32,
 }
 
 impl PageSize {
@@ -12,10 +21,12 @@ impl PageSize {
         height_pt: 841.89,
     };
 
-    /// Two page sizes match when both dimensions differ by less than 1 pt.
-    pub fn approx_eq(&self, other: &PageSize) -> bool {
-        (self.width_pt - other.width_pt).abs() < 1.0
-            && (self.height_pt - other.height_pt).abs() < 1.0
+    /// Returns the page's equivalence class on the one-point lattice.
+    pub fn size_class(&self) -> SizeClass {
+        SizeClass {
+            width_cells: (self.width_pt / LATTICE_PT).round() as i32,
+            height_cells: (self.height_pt / LATTICE_PT).round() as i32,
+        }
     }
 }
 
@@ -38,20 +49,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn page_sizes_within_one_point_are_the_same_size() {
+    fn page_sizes_in_the_same_lattice_cell_have_the_same_size_class() {
         let a = PageSize {
-            width_pt: 595.276,
-            height_pt: 841.89,
-        };
-        let b = PageSize {
-            width_pt: 595.9,
+            width_pt: 595.2,
             height_pt: 841.2,
         };
+        let b = PageSize {
+            width_pt: 595.4,
+            height_pt: 841.4,
+        };
         let c = PageSize {
-            width_pt: 612.0,
-            height_pt: 792.0,
-        }; // US Letter
-        assert!(a.approx_eq(&b));
-        assert!(!a.approx_eq(&c));
+            width_pt: 595.5,
+            height_pt: 841.5,
+        };
+        assert_eq!(a.size_class(), b.size_class());
+        assert_ne!(a.size_class(), c.size_class());
     }
 }

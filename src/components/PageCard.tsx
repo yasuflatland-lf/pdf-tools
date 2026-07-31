@@ -82,7 +82,7 @@ export function PageCard({
             />
             {failed && (
               <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
-                サムネイルを表示できません
+                Thumbnail unavailable
               </p>
             )}
           </div>
@@ -119,7 +119,7 @@ export function SourceErrorCard({
           <span className="text-2xl" aria-hidden="true">
             !
           </span>
-          <span>結合対象外</span>
+          <span>Not merged</span>
         </div>
       }
       caption={<ErrorBadge status={status} />}
