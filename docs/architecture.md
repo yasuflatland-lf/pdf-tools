@@ -109,8 +109,8 @@ implementation, and every application-layer test runs against it.
 One rule governs both directions, and it is evaluated only after an operation commits — never
 mid-drag:
 
-- **A source ungroups when a slot from another source lands strictly inside its run** (between its
-  first and last slot). Insertions at a boundary between groups do not ungroup anything.
+- **A source ungroups when an operation leaves its slots non-contiguous or no longer ascending.**
+  In the current UI, that operation is a drag (`reorder`).
 - **An ungrouped source regroups automatically once its slots are contiguous again _and_ their
   page numbers increase monotonically.** Deletion leaves gaps (1, 2, 4, 5) that stay monotonic, so
   those refold; a swap (1, 2, 7, 4, 5) does not.
