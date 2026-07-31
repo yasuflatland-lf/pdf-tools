@@ -345,6 +345,6 @@ describe("PageGrid", () => {
 
     const container = await renderGrid();
 
-    expect(container.textContent).toContain("サムネイルを表示できません");
+    expect(container.textContent).toContain("Thumbnail unavailable");
   });
 });
