@@ -156,11 +156,12 @@ export function useCardFocus({
           return byKey >= 0 ? byKey : Math.min(focused.index, cards.length - 1);
         })();
 
-  // Once the focus has fallen back onto whatever card took that position, the
-  // selection has to follow it, or the next Delete acts on a card the ring is no
-  // longer drawn around.
+  // Once the focus has fallen back onto whatever card took that position,
+  // re-anchor it to that card and make the selection follow it, or the next
+  // Delete acts on a card the ring is no longer drawn around.
   useEffect(() => {
     if (focused !== null && focusedIndex >= 0 && cards[focusedIndex].key !== focused.key) {
+      setFocused({ key: cards[focusedIndex].key, index: focusedIndex });
       useUiStore.getState().selectSlots(cards[focusedIndex].slotIds);
     }
   }, [cards, focused, focusedIndex]);

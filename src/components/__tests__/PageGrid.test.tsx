@@ -331,6 +331,71 @@ describe("PageGrid", () => {
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
   });
 
+  it("keeps focus and selection on the replacement card after undo", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    load(sourceFile, 5);
+    await renderGrid();
+
+    for (let index = 0; index < 3; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: originalSlots.filter((slot) => slot.id !== 3),
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: originalSlots,
+        sources: [sourceFile],
+        can_undo: false,
+        can_redo: true,
+      });
+    });
+
+    expect(document.activeElement?.textContent).toContain("Page 4");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+  });
+
+  it("keeps focus and selection on the replacement card after an unrelated reorder", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    const slotsAfterDelete = originalSlots.filter((slot) => slot.id !== 3);
+    load(sourceFile, 5);
+    await renderGrid();
+
+    for (let index = 0; index < 3; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: slotsAfterDelete,
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: [...slotsAfterDelete.slice(1), slotsAfterDelete[0]],
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    expect(document.activeElement?.textContent).toContain("Page 4");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+  });
+
   it("follows a focused card when it is reordered to the end", async () => {
     const sourceFile = source(10, "ungrouped", 5);
     const originalSlots = slots(sourceFile.id, 5);
