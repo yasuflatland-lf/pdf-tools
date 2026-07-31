@@ -3,13 +3,14 @@ use super::PdfiumEngine;
 use crate::application::errors::{ImageError, PdfError};
 use crate::application::ports::{ComposeEntry, ComposePlan, ImageDecoder, MergeReport};
 use crate::domain::geometry::PageSize;
+use crate::domain::plan::Rotation;
 use crate::infrastructure::image_decoder::ImageCrateDecoder;
 use crate::infrastructure::jpeg::{self, Passthrough};
 use image::imageops::FilterType;
 use image::{DynamicImage, RgbaImage};
 use pdfium_render::prelude::{
     PdfColor, PdfDocument, PdfPageImageObject, PdfPageObjectsCommon, PdfPagePaperSize,
-    PdfPagePathObject, PdfPoints, PdfRect,
+    PdfPagePathObject, PdfPageRenderRotation, PdfPoints, PdfRect,
 };
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -48,7 +49,11 @@ pub(super) fn compose(
 
         for entry in &plan.entries {
             match entry {
-                ComposeEntry::PdfPage { path, page } => {
+                ComposeEntry::PdfPage {
+                    path,
+                    page,
+                    rotation,
+                } => {
                     if !path.is_file() {
                         return Err(PdfError::Missing { path: path.clone() });
                     }
@@ -78,8 +83,34 @@ pub(super) fn compose(
                             path: path.clone(),
                             reason: format!("PDFium could not import page {}: {error}", page.0 + 1),
                         })?;
+                    let mut copied_page =
+                        destination
+                            .pages()
+                            .get(page_count as i32)
+                            .map_err(|error| PdfError::Unreadable {
+                                path: path.clone(),
+                                reason: format!(
+                                    "PDFium could not access imported page {}: {error}",
+                                    page.0 + 1
+                                ),
+                            })?;
+                    let existing_rotation =
+                        copied_page
+                            .rotation()
+                            .map_err(|error| PdfError::Unreadable {
+                                path: path.clone(),
+                                reason: format!(
+                                    "PDFium could not read imported page {} rotation: {error}",
+                                    page.0 + 1
+                                ),
+                            })?;
+                    copied_page.set_rotation(add_rotation(existing_rotation, *rotation));
                 }
-                ComposeEntry::Image { path, fit_to } => {
+                ComposeEntry::Image {
+                    path,
+                    fit_to,
+                    rotation,
+                } => {
                     let (mut image_object, placement) = image_object(&destination, path, *fit_to)?;
 
                     let mut page = destination
@@ -117,6 +148,7 @@ pub(super) fn compose(
                         .map_err(|error| image_composition_error(path, error))?;
                     page.regenerate_content()
                         .map_err(|error| image_composition_error(path, error))?;
+                    page.set_rotation(pdfium_rotation(*rotation));
                 }
             }
             page_count += 1;
@@ -134,6 +166,28 @@ pub(super) fn compose(
             bytes_written,
         })
     })
+}
+
+fn add_rotation(existing: PdfPageRenderRotation, added: Rotation) -> PdfPageRenderRotation {
+    let existing_quarter_turns = match existing {
+        PdfPageRenderRotation::None => 0,
+        PdfPageRenderRotation::Degrees90 => 1,
+        PdfPageRenderRotation::Degrees180 => 2,
+        PdfPageRenderRotation::Degrees270 => 3,
+    };
+    let quarter_turns = (existing_quarter_turns + added.quarter_turns()) % 4;
+
+    match quarter_turns {
+        0 => PdfPageRenderRotation::None,
+        1 => PdfPageRenderRotation::Degrees90,
+        2 => PdfPageRenderRotation::Degrees180,
+        3 => PdfPageRenderRotation::Degrees270,
+        _ => unreachable!("a value modulo four is always in 0..4"),
+    }
+}
+
+fn pdfium_rotation(rotation: Rotation) -> PdfPageRenderRotation {
+    add_rotation(PdfPageRenderRotation::None, rotation)
 }
 
 /// Where a fitted image sits on its page, in points.

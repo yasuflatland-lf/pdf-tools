@@ -1,11 +1,16 @@
 #[path = "support/fixtures.rs"]
 mod fixtures;
+#[path = "support/phash.rs"]
+mod phash;
 
 use fixtures::{engine, fixture};
+use image::imageops::rotate90;
 use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, PdfEngine};
 use pdf_tools_core::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
-use pdfium_render::prelude::{PdfPageObjectCommon, PdfPageObjectsCommon};
+use pdf_tools_core::domain::plan::Rotation;
+use pdfium_render::prelude::{PdfPageObjectCommon, PdfPageObjectsCommon, PdfPageRenderRotation};
+use phash::{average_hash, hamming_distance, render_page};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -23,6 +28,7 @@ fn image_plan(name: &str) -> ComposePlan {
         entries: vec![ComposeEntry::Image {
             path: fixture(name),
             fit_to: PageSize::A4_PORTRAIT,
+            rotation: Default::default(),
         }],
     }
 }
@@ -75,6 +81,13 @@ fn image_filters(path: &std::path::Path) -> Vec<String> {
     })
 }
 
+fn page_rotation(path: &std::path::Path) -> PdfPageRenderRotation {
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(path, None).unwrap();
+        document.pages().get(0).unwrap().rotation().unwrap()
+    })
+}
+
 /// The pixel dimensions PDFium recorded for the first embedded image on page 0.
 fn image_pixels(path: &std::path::Path) -> (i32, i32) {
     engine().with_library(|pdfium| {
@@ -104,6 +117,7 @@ fn an_image_denser_than_the_cap_is_embedded_at_the_cap() {
                 width_pt: 72.0,
                 height_pt: 72.0,
             },
+            rotation: Default::default(),
         }],
     };
     engine().compose(&plan, &out).unwrap();
@@ -135,6 +149,7 @@ fn a_passthrough_jpeg_is_never_downscaled() {
                 width_pt: 72.0,
                 height_pt: 72.0,
             },
+            rotation: Default::default(),
         }],
     };
     engine().compose(&plan, &out).unwrap();
@@ -147,6 +162,23 @@ fn a_passthrough_jpeg_is_never_downscaled() {
 fn a_baseline_jpeg_is_embedded_as_its_original_stream() {
     let out = temp_path("baseline-passthrough.pdf");
     engine().compose(&image_plan("sample.jpg"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn a_rotated_jpeg_is_still_embedded_as_its_original_stream() {
+    let out = temp_path("rotated-passthrough.pdf");
+    let plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: fixture("sample.jpg"),
+            fit_to: PageSize::A4_PORTRAIT,
+            rotation: Rotation::from_quarter_turns(1),
+        }],
+    };
+
+    engine().compose(&plan, &out).unwrap();
+
+    assert_eq!(page_rotation(&out), PdfPageRenderRotation::Degrees90);
     assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
 }
 
@@ -218,6 +250,7 @@ fn an_image_becomes_a_page_of_the_requested_size() {
         entries: vec![ComposeEntry::Image {
             path: fixture("sample.jpg"),
             fit_to: PageSize::A4_PORTRAIT,
+            rotation: Default::default(),
         }],
     };
     engine().compose(&plan, &out).unwrap();
@@ -250,6 +283,59 @@ fn a_landscape_image_is_letterboxed_top_and_bottom() {
 }
 
 #[test]
+fn a_rotated_image_page_renders_as_a_clockwise_turn() {
+    let unrotated_out = temp_path("unrotated-render.pdf");
+    let rotated_out = temp_path("rotated-render.pdf");
+    engine()
+        .compose(&image_plan("sample.jpg"), &unrotated_out)
+        .unwrap();
+    let rotated_plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: fixture("sample.jpg"),
+            fit_to: PageSize::A4_PORTRAIT,
+            rotation: Rotation::from_quarter_turns(1),
+        }],
+    };
+    engine().compose(&rotated_plan, &rotated_out).unwrap();
+
+    let baseline = render_page(
+        &unrotated_out,
+        PageIndex(0),
+        RasterSpec {
+            target_width_px: 128,
+        },
+    );
+    let baseline_buffer =
+        image::RgbaImage::from_raw(baseline.width, baseline.height, baseline.rgba.clone())
+            .expect("the rendered baseline should have valid dimensions");
+    let expected_buffer = rotate90(&baseline_buffer);
+    let expected = RasterImage {
+        width: expected_buffer.width(),
+        height: expected_buffer.height(),
+        rgba: expected_buffer.into_raw(),
+    };
+    let actual = render_page(
+        &rotated_out,
+        PageIndex(0),
+        RasterSpec {
+            target_width_px: expected.width,
+        },
+    );
+    let baseline_hash = average_hash(&baseline);
+    let expected_hash = average_hash(&expected);
+    let actual_hash = average_hash(&actual);
+
+    assert!(
+        hamming_distance(baseline_hash, expected_hash) > 4,
+        "the fixture is too symmetric to prove that the page turned"
+    );
+    assert!(
+        hamming_distance(actual_hash, expected_hash) <= 4,
+        "the rendered image page did not turn clockwise"
+    );
+}
+
+#[test]
 fn a_portrait_image_is_pillarboxed_left_and_right() {
     let out = temp_path("portrait.pdf");
     engine().compose(&image_plan("tall.png"), &out).unwrap();
@@ -277,14 +363,17 @@ fn images_and_pdf_pages_can_be_interleaved() {
             ComposeEntry::PdfPage {
                 path: fixture("multi_page.pdf"),
                 page: PageIndex(0),
+                rotation: Default::default(),
             },
             ComposeEntry::Image {
                 path: fixture("sample.jpg"),
                 fit_to: PageSize::A4_PORTRAIT,
+                rotation: Default::default(),
             },
             ComposeEntry::PdfPage {
                 path: fixture("multi_page.pdf"),
                 page: PageIndex(1),
+                rotation: Default::default(),
             },
         ],
     };

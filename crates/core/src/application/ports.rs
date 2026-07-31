@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::application::errors::{ImageError, PdfError};
 use crate::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use crate::domain::ids::PageIndex;
+use crate::domain::plan::Rotation;
 use crate::domain::source::{DocumentInfo, ImageInfo};
 
 /// A fully resolved merge instruction.
@@ -17,8 +18,16 @@ pub struct ComposePlan {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComposeEntry {
-    PdfPage { path: PathBuf, page: PageIndex },
-    Image { path: PathBuf, fit_to: PageSize },
+    PdfPage {
+        path: PathBuf,
+        page: PageIndex,
+        rotation: Rotation,
+    },
+    Image {
+        path: PathBuf,
+        fit_to: PageSize,
+        rotation: Rotation,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
