@@ -22,10 +22,8 @@ interface UiState {
   selectedSlots: Set<number>;
   viewMode: ViewMode;
   /**
-   * Whether a modal owns the keyboard. The document shortcuts live on `window`
-   * in three different components, so a modal cannot take the keyboard by
-   * mounting a listener of its own -- it has to say so somewhere all three can
-   * see.
+   * Whether a modal owns the keyboard. The shared document shortcut listener
+   * checks this before dispatching any action behind the overlay.
    */
   modalOpen: boolean;
   setModalOpen: (open: boolean) => void;
