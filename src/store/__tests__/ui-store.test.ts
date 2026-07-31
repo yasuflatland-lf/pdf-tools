@@ -7,6 +7,22 @@ describe("createUiStore", () => {
     vi.restoreAllMocks();
   });
 
+  it("starts with the UI-only selections and grid view", () => {
+    expect(createUiStore().getState()).toEqual({
+      expandedSources: new Set(),
+      selectedSlots: new Set(),
+      viewMode: "grid",
+      modalOpen: false,
+      setModalOpen: expect.any(Function),
+      setViewMode: expect.any(Function),
+      toggleExpanded: expect.any(Function),
+      pruneExpanded: expect.any(Function),
+      selectSlots: expect.any(Function),
+      clearSelection: expect.any(Function),
+      pruneSelected: expect.any(Function),
+    });
+  });
+
   it("toggles a source between expanded and collapsed", () => {
     const store = createUiStore();
     store.getState().toggleExpanded(10);
