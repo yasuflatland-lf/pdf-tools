@@ -297,7 +297,7 @@ describe("App", () => {
 
     const unusable = container.querySelector('[aria-label="Unusable source files"]');
     expect(unusable?.textContent).toContain("locked.pdf");
-    expect(unusable?.textContent).toMatch(/パスワード/);
+    expect(unusable?.textContent).toMatch(/Password protected/);
     expect(unusable?.textContent).toContain("damaged.pdf");
     expect(unusable?.textContent).toContain("broken xref");
     // The readable source keeps its own card and is not dimmed with the others.
