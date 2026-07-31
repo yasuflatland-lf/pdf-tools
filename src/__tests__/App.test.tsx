@@ -278,7 +278,7 @@ describe("App", () => {
           kind: "pdf",
           grouping: "grouped",
           page_count: 0,
-          status: { kind: "unreadable", reason: "broken xref" },
+          status: { kind: "unreadable", reason: "damaged" },
         },
       ],
       can_undo: true,
@@ -300,7 +300,7 @@ describe("App", () => {
     expect(unusable?.textContent).toContain("locked.pdf");
     expect(unusable?.textContent).toMatch(/Password protected/);
     expect(unusable?.textContent).toContain("damaged.pdf");
-    expect(unusable?.textContent).toContain("broken xref");
+    expect(unusable?.textContent).toContain("This file is damaged and could not be read");
     // The readable source keeps its own card and is not dimmed with the others.
     expect(unusable?.textContent).not.toContain("photo.png");
     expect(container.querySelectorAll(".opacity-60")).toHaveLength(2);

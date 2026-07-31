@@ -10,12 +10,25 @@ pub enum SourceKind {
     Image,
 }
 
+/// Why a source file could not be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnreadableReason {
+    /// Not a format this app decodes.
+    UnsupportedFormat,
+    /// The file exists but its contents could not be parsed.
+    Damaged,
+    /// The file disappeared between being added and being read.
+    Missing,
+    /// The engine itself was unavailable.
+    EngineUnavailable,
+}
+
 /// The availability of a source file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceStatus {
     Ready,
     Encrypted,
-    Unreadable { reason: String },
+    Unreadable(UnreadableReason),
 }
 
 /// A source file and its probed metadata.

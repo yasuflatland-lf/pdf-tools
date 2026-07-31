@@ -212,12 +212,14 @@ The trust boundary is **the files the user drops in**, and one bad file must nev
 
 - **Encrypted PDF** — detected at `probe`; the card goes to an error state and the source is
   excluded from the merge. No password prompt exists.
-- **Corrupt PDF or undecodable image** — same treatment, with the reason shown on the card.
+- **Corrupt PDF or undecodable image** — same treatment, with a typed, user-facing explanation
+  shown on the card.
 - **File moved or deleted after being added** — detected at `compose`; the merge stops and names
   the offending file in the error dialog.
 
-`PdfError` and `ImageError` are `thiserror` enums whose messages name the path and the reason;
-presentation maps them to strings for the dialog.
+`PdfError` and `ImageError` are `thiserror` enums whose messages name the path and the reason.
+At probe time, application maps them to typed unreadable reasons for the card and logs the engine
+message; presentation still maps compose failures to strings for the dialog.
 
 ## Security
 

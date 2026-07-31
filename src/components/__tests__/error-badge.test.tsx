@@ -37,12 +37,15 @@ describe("ErrorBadge", () => {
     expect(container.textContent).toMatch(/Password protected/);
   });
 
-  it("shows the reason for unreadable sources", async () => {
-    const container = await render(
-      <ErrorBadge status={{ kind: "unreadable", reason: "broken xref" }} />,
-    );
+  it.each([
+    ["unsupportedFormat", "This file format is not supported"],
+    ["damaged", "This file is damaged and could not be read"],
+    ["missing", "This file could not be found"],
+    ["engineUnavailable", "The PDF engine is unavailable"],
+  ] as const)("shows the message for the %s unreadable reason", async (reason, message) => {
+    const container = await render(<ErrorBadge status={{ kind: "unreadable", reason }} />);
 
-    expect(container.textContent).toContain("broken xref");
+    expect(container.textContent).toBe(message);
   });
 
   it("renders nothing for ready sources", async () => {
@@ -53,15 +56,12 @@ describe("ErrorBadge", () => {
 
   it("renders a dimmed source error card with the file name and badge", async () => {
     const container = await render(
-      <SourceErrorCard
-        fileName="damaged.pdf"
-        status={{ kind: "unreadable", reason: "broken xref" }}
-      />,
+      <SourceErrorCard fileName="damaged.pdf" status={{ kind: "unreadable", reason: "damaged" }} />,
     );
     const card = container.querySelector("article");
 
     expect(card?.classList.contains("opacity-60")).toBe(true);
     expect(container.textContent).toContain("damaged.pdf");
-    expect(container.textContent).toContain("broken xref");
+    expect(container.textContent).toContain("This file is damaged and could not be read");
   });
 });

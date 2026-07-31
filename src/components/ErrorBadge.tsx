@@ -8,7 +8,16 @@ function errorMessage(status: SourceStatusDto): string | null {
   if (status.kind === "encrypted") {
     return "Password protected";
   }
-  return `Could not be read: ${status.reason}`;
+  switch (status.reason) {
+    case "unsupportedFormat":
+      return "This file format is not supported";
+    case "damaged":
+      return "This file is damaged and could not be read";
+    case "missing":
+      return "This file could not be found";
+    case "engineUnavailable":
+      return "The PDF engine is unavailable";
+  }
 }
 
 export function ErrorBadge({ status }: { status: SourceStatusDto }): ReactElement | null {
