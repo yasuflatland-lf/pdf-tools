@@ -1,0 +1,98 @@
+import { DndContext } from "@dnd-kit/core";
+import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
+import { createContext, useContext, useRef, type ReactNode } from "react";
+import type { ThumbnailCache } from "../lib/thumbnail-cache";
+import { useUiStore } from "../store/ui-store";
+import { SortableCard } from "./SortableCard";
+import { useCardFocus, useCardRows, usePageCards, type DisplayCard } from "./usePageCards";
+
+interface CardSurfaceProps {
+  columnCount: number;
+  rowHeight: number;
+  viewMode: "grid" | "list";
+  renderCard: (card: DisplayCard, thumbnailWidth: number) => ReactNode;
+  thumbnailWidth: number;
+}
+
+const CardSurfaceCacheContext = createContext<ThumbnailCache | null>(null);
+
+export function useCardSurfaceCache(): ThumbnailCache {
+  const cache = useContext(CardSurfaceCacheContext);
+  if (!cache) {
+    throw new Error("useCardSurfaceCache must be used within CardSurface");
+  }
+  return cache;
+}
+
+export function CardSurface({
+  columnCount,
+  rowHeight,
+  viewMode,
+  renderCard,
+  thumbnailWidth,
+}: CardSurfaceProps) {
+  const selectedSlots = useUiStore((state) => state.selectedSlots);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { cache, cards, handleDragEnd, sensors } = usePageCards();
+  const { rows, scrollToIndex, totalSize } = useCardRows({
+    cards,
+    columnCount,
+    rowHeight,
+    scrollRef,
+  });
+  const focusedIndex = useCardFocus({ cards, columnCount, scrollToIndex });
+
+  return (
+    <CardSurfaceCacheContext value={cache}>
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto"
+          aria-label="Document pages"
+          data-view-mode={viewMode}
+          role="listbox"
+          aria-multiselectable="true"
+        >
+          <SortableContext items={cards.map((card) => card.key)} strategy={rectSortingStrategy}>
+            <div className="relative w-full" style={{ height: `${totalSize}px` }}>
+              {rows.map((row) => {
+                const rowCards = cards.slice(
+                  row.index * columnCount,
+                  (row.index + 1) * columnCount,
+                );
+
+                return (
+                  <div
+                    key={row.key}
+                    className="absolute top-0 left-0 grid w-full gap-4 pb-4"
+                    style={{
+                      gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                      transform: `translateY(${row.start}px)`,
+                    }}
+                  >
+                    {rowCards.map((card, positionInRow) => {
+                      const cardIndex = row.index * columnCount + positionInRow;
+                      const selected = card.slotIds.every((slotId) => selectedSlots.has(slotId));
+
+                      return (
+                        <SortableCard
+                          key={card.key}
+                          id={card.key}
+                          label={card.fileName}
+                          focused={focusedIndex === cardIndex}
+                          selected={selected}
+                        >
+                          {renderCard(card, thumbnailWidth)}
+                        </SortableCard>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </SortableContext>
+        </div>
+      </DndContext>
+    </CardSurfaceCacheContext>
+  );
+}
