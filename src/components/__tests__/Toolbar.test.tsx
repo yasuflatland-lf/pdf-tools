@@ -82,7 +82,7 @@ async function renderShell(): Promise<HTMLElement> {
 
 function getButton(container: HTMLElement, name: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find(
-    (candidate) => candidate.textContent === name,
+    (candidate) => candidate.getAttribute("aria-label") === name || candidate.textContent === name,
   );
   if (!button) {
     throw new Error(`Button "${name}" was not found`);
@@ -201,8 +201,8 @@ describe("Toolbar", () => {
 
   it("switches between grid and list views and reports the active mode", async () => {
     const container = await renderToolbar();
-    const grid = getButton(container, "Grid");
-    const list = getButton(container, "List");
+    const grid = getButton(container, "Grid view");
+    const list = getButton(container, "List view");
 
     expect(grid.getAttribute("aria-pressed")).toBe("true");
     expect(list.getAttribute("aria-pressed")).toBe("false");
@@ -498,5 +498,16 @@ describe("Toolbar", () => {
     });
     keyDown({ key: "Escape" });
     expect(useUiStore.getState().selectedSlots.size).toBe(0);
+  });
+
+  it("groups the view modes into one labelled control", async () => {
+    const container = await renderToolbar();
+    const group = container.querySelector('[role="group"]');
+
+    expect(group?.getAttribute("aria-label")).toBe("View mode");
+    // Both modes live inside the enclosure, which is what makes it read as a
+    // single "exactly one of these" control rather than two loose buttons.
+    expect(group?.querySelectorAll("button")).toHaveLength(2);
+    expect(getButton(container, "Grid view").getAttribute("title")).toBe("Grid view");
   });
 });

@@ -11,6 +11,7 @@ import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { blamedFiles, ErrorDialog } from "./ErrorDialog";
 import { ProgressBar } from "./ProgressBar";
+import { ViewToggle } from "./ViewToggle";
 
 interface MergeResult {
   dest: string;
@@ -40,24 +41,11 @@ async function showInFolder(dest: string): Promise<void> {
   }
 }
 
-/**
- * The active view button is filled in, so the current mode reads at a glance
- * rather than only through `aria-pressed`.
- */
-function viewButtonClass(active: boolean): string {
-  const state = active
-    ? "border-slate-500 bg-slate-800 text-slate-100"
-    : "border-slate-700 hover:bg-slate-800";
-  return `rounded-md border px-3 py-1.5 ${state}`;
-}
-
 export function Toolbar() {
   const fileCount = usePlanStore((state) => state.sources.length);
   const pageCount = usePlanStore((state) => state.slots.length);
   const canUndo = usePlanStore((state) => state.canUndo);
   const canRedo = usePlanStore((state) => state.canRedo);
-  const viewMode = useUiStore((state) => state.viewMode);
-  const setViewMode = useUiStore((state) => state.setViewMode);
   const modalOpen = useUiStore((state) => state.modalOpen);
   const [isMerging, setIsMerging] = useState(false);
   const [progress, setProgress] = useState<ComposeProgressDto>({ done: 0, total: 0 });
@@ -173,24 +161,7 @@ export function Toolbar() {
       >
         Redo
       </button>
-      <div className="flex items-center gap-2" role="group" aria-label="View mode">
-        <button
-          aria-pressed={viewMode === "grid"}
-          className={viewButtonClass(viewMode === "grid")}
-          onClick={() => setViewMode("grid")}
-          type="button"
-        >
-          Grid
-        </button>
-        <button
-          aria-pressed={viewMode === "list"}
-          className={viewButtonClass(viewMode === "list")}
-          onClick={() => setViewMode("list")}
-          type="button"
-        >
-          List
-        </button>
-      </div>
+      <ViewToggle />
       <div className="ml-auto flex items-center gap-3">
         {isMerging && (
           <ProgressBar done={progress.done} label="Merge progress" total={progress.total} />
