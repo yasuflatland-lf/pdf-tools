@@ -5,7 +5,7 @@ State: v0.1.0. The merge plan (an ordered list of one-page slots) is canonical i
 
 ## Mandatory rules (harness)
 
-- **Write all code comments in English.** Name identifiers in English too.
+- **Write everything in this repository in English** — code comments, identifiers, commit messages, and **the title and body of every pull request and issue**.
 - **TDD**: write the failing test first, then the smallest implementation (cargo-nextest / Vitest).
 - **Layer boundaries**: `domain` is pure (no IO/async/external crates); IO lives behind the `PdfEngine`/`ImageDecoder` ports; deps flow presentation→application→domain and infrastructure→domain, never back.
 - **Do not swap libraries** (Tauri 2 / pdfium-render / image / @tanstack/react-virtual / @dnd-kit / oxlint / oxfmt are fixed choices).

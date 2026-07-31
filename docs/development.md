@@ -80,8 +80,10 @@ Each layer is tested at the level where its mistakes actually live:
 
 ## Conventions
 
-- **Every code comment and identifier is written in English**, in a repository whose issues and
-  design docs are in Japanese. Comments explain _why_, not _what_.
+- **Everything in this repository is written in English** — code comments, identifiers, commit
+  messages, and the title and body of every pull request and issue. Comments explain _why_, not
+  _what_. The authoritative design documents live in Notion and are in Japanese; that is outside
+  this repository and stays as it is.
 - **Layer boundaries are enforced by review, not by a lint.** `domain` stays free of IO, async and
   external crates; dependencies flow presentation → application → domain and infrastructure →
   domain, never back. See [`architecture.md`](architecture.md).
@@ -93,6 +95,8 @@ Each layer is tested at the level where its mistakes actually live:
 
 - **One PR = one task = one GitHub issue.** Production code stays under 800 lines; test code is
   not counted.
+- **Pull requests and issues are written in English**, title and body alike — see
+  [Conventions](#conventions).
 - **Commit messages are a single line.** No body, no trailers, and **no AI attribution of any
   kind**.
 - **Every gate must be green before merge**: `cargo clippy -- -D warnings`, `cargo fmt --check`,
