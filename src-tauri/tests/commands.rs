@@ -145,6 +145,14 @@ fn pdf_info() -> DocumentInfo {
     }
 }
 
+fn document(page_count: u32) -> DocumentInfo {
+    DocumentInfo {
+        page_count,
+        page_sizes: vec![PageSize::A4_PORTRAIT; page_count as usize],
+        encrypted: false,
+    }
+}
+
 fn add_sources(state: &AppState, paths: &[PathBuf]) -> u64 {
     add_sources_inner(
         state,
@@ -292,6 +300,34 @@ fn add_sources_returns_a_snapshot_containing_the_new_slots() {
 
     assert_eq!(snapshot.slots.len(), 3);
     assert_eq!(snapshot.sources[0].kind, "pdf");
+}
+
+#[test]
+fn a_panic_while_the_session_is_locked_does_not_lose_the_document() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new().with_document("/a.pdf", document(2))),
+        Arc::new(FakeImageDecoder::new()),
+    );
+    add_sources_inner(&state, vec!["/a.pdf".into()]).unwrap();
+
+    // A command that panics while holding the guard poisons the mutex. The next
+    // command must still see the document as it stood before the panic.
+    let panicked = std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                let _guard = state.session();
+                panic!("a command panicked while holding the session");
+            })
+            .join()
+    });
+    assert!(
+        panicked.is_err(),
+        "the spawned command should have panicked"
+    );
+
+    let snapshot = add_sources_inner(&state, vec!["/a.pdf".into()]).unwrap();
+    assert_eq!(snapshot.slots.len(), 4);
+    assert_eq!(snapshot.sources.len(), 2);
 }
 
 #[test]
