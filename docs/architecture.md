@@ -21,7 +21,8 @@ add, insert, reorder, delete, undo — is a pure function from one plan to the n
 
 `SlotId` is a standalone monotonic id rather than `(source, page)`, because the same page may
 appear more than once in a plan and a composite key would make those duplicates indistinguishable
-in the UI.
+in the UI. That support does not make duplicates groupable: while both copies remain, their source
+stays ungrouped under the strict-ascent rule below.
 
 ## Crate layout and dependency rule
 
@@ -112,8 +113,11 @@ mid-drag:
 - **A source ungroups when an operation leaves its slots non-contiguous or no longer ascending.**
   In the current UI, that operation is a drag (`reorder`).
 - **An ungrouped source regroups automatically once its slots are contiguous again _and_ their
-  page numbers increase monotonically.** Deletion leaves gaps (1, 2, 4, 5) that stay monotonic, so
-  those refold; a swap (1, 2, 7, 4, 5) does not.
+  page numbers strictly increase.** Deletion leaves gaps (1, 2, 4, 5) that stay ascending, so
+  those refold; a swap (1, 2, 7, 4, 5) does not. A source with two copies of the same page stays
+  ungrouped for as long as both copies remain in the plan. The ascent is strict rather than
+  non-decreasing because a collapsed card's page count would otherwise misdescribe a run holding
+  a page twice.
 
 A collapsed card shows the number of pages actually present, not the original page range —
 `source.page_count` still counts pages the user has since deleted.
@@ -131,8 +135,10 @@ pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
 ```
 
 Every operation returns a new plan, so undo/redo is nothing but a stack of plans in `PlanSession`.
-A `PageSlot` is 24 bytes (two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan
-costs ~24 KB per stack entry — cheap enough that no diffing scheme is warranted.
+The history retains the most recent 100 states and discards older ones, so undoing to exhaustion
+returns to the oldest retained state, not necessarily to the empty document the session started
+from. A `PageSlot` is 24 bytes (two `u64` ids plus a `u32` page index, padded), so even a 1000-page
+plan costs ~24 KB per stack entry — cheap enough that no diffing scheme is warranted.
 
 ## State ownership
 
