@@ -95,20 +95,23 @@ pub fn compose_inner(
     dest: &Path,
     progress: &dyn ProgressSink,
 ) -> Result<MergeReportDto, String> {
-    // The plan and the sources are cloned out of the session so the lock is
-    // released before the engine runs: a merge must never block the commands
-    // the UI issues meanwhile, and it must never mutate the plan.
-    let (plan, sources) = {
+    // The document is cloned out of the session so the lock is released before
+    // the engine runs: a merge must never block the commands the UI issues
+    // meanwhile, and it must never mutate the document.
+    let document = {
         let session = state.session();
-        (session.plan().clone(), session.sources().to_vec())
+        session.document().clone()
     };
 
     Compose { pdf: state.pdf() }
-        .execute(&plan, &sources, dest, progress)
+        .execute(&document, dest, progress)
         .map(MergeReportDto::from)
         .map_err(|error| match error {
             ComposeError::EmptyPlan => {
                 "there is nothing to merge: add at least one file first".to_owned()
+            }
+            ComposeError::NoUsableSources => {
+                "there is nothing to merge: the document has no usable pages".to_owned()
             }
             other => other.to_string(),
         })
@@ -155,11 +158,7 @@ pub fn rasterize_slot_inner(state: &AppState, slot_id: u64, width: u32) -> Resul
             .iter()
             .find(|slot| slot.id == SlotId(slot_id))
             .ok_or_else(|| format!("slot {slot_id} was not found"))?;
-        let source = session
-            .sources()
-            .iter()
-            .find(|source| source.id == slot.source)
-            .ok_or_else(|| format!("source {} for slot {slot_id} was not found", slot.source.0))?;
+        let source = session.document().source_of(slot);
         (source.path.clone(), source.kind, slot.page)
     };
 
