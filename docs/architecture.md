@@ -118,10 +118,9 @@ mid-drag:
 A collapsed card shows the number of pages actually present, not the original page range —
 `source.page_count` still counts pages the user has since deleted.
 
-The frontend has its own `groupContiguous` (`src/lib/grouping.ts`) that mirrors
-`domain::grouping::group_contiguous`. This is display-only derivation from a snapshot the backend
-already produced; the _decision_ about grouped versus ungrouped is made in Rust and shipped in the
-snapshot.
+Folding a run into a card is derived in the frontend by `groupContiguous`
+(`src/lib/grouping.ts`) from the snapshot the backend produced. Rust owns only the grouped/ungrouped
+decision, which it ships in that snapshot.
 
 ## Immutability and undo
 
