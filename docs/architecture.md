@@ -171,16 +171,14 @@ pinning that a panic while the session is locked does not lose the document — 
 
 Every plan command returns a fresh `PlanSnapshot`.
 
-| Command                          | Semantics                                                                          |
-| -------------------------------- | ---------------------------------------------------------------------------------- |
-| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                           |
-| `insert_at(index, slot_ids)`     | Insert at a position; ungroup the affected source if the insert lands inside a run |
-| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                               |
-| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping    |
-| `undo()` / `redo()`              | Move along the plan stack                                                          |
-| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                                |
-| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                       |
-| `pdfium_health()`                | Report whether PDFium loaded, and its version                                      |
+| Command                          | Semantics                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
+| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
+| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
+| `undo()` / `redo()`              | Move along the plan stack                                                       |
+| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
+| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                    |
 
 Two shapes are deliberate:
 
