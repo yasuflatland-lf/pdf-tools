@@ -1,11 +1,10 @@
 import { DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { nextFocusIndex, resolveShortcut } from "../lib/keyboard";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useUiStore } from "../store/ui-store";
 import { GroupCard } from "./GroupCard";
 import { SortableCard } from "./SortableCard";
-import { useCardRows, usePageCards } from "./usePageCards";
+import { useCardFocus, useCardRows, usePageCards } from "./usePageCards";
 
 const CARD_MIN_WIDTH = 180;
 const GAP = 16;
@@ -20,7 +19,6 @@ export function PageGrid() {
   const selectedSlots = useUiStore((state) => state.selectedSlots);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const { cache, cards, handleDragEnd, sensors } = usePageCards();
   const { rows, scrollToIndex, totalSize } = useCardRows({
     cards,
@@ -28,6 +26,7 @@ export function PageGrid() {
     rowHeight: ROW_HEIGHT,
     scrollRef,
   });
+  const focusedIndex = useCardFocus({ cards, columnCount, scrollToIndex });
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -38,46 +37,6 @@ export function PageGrid() {
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
-
-  /**
-   * Arrow navigation. It belongs to the grid because only the grid knows how
-   * many cards there are and how many fit in a row, and the selection follows
-   * the focus so that Delete always acts on the card the user is looking at.
-   */
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // A modal owns the keyboard while it is open; nothing here may reach the
-      // document behind it.
-      if (useUiStore.getState().modalOpen) {
-        return;
-      }
-
-      // dnd-kit's keyboard sensor steers a picked-up card with the same arrows
-      // and calls `preventDefault` while it does; moving the focus as well would
-      // drag one card and select another.
-      if (event.defaultPrevented) {
-        return;
-      }
-
-      // `nextFocusIndex` yields null for every action that is not a focus move,
-      // which is how the other shortcuts stay the concern of their own handler.
-      const action = resolveShortcut(event);
-      const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
-      const next =
-        action === null ? null : nextFocusIndex(action, current, cards.length, columnCount);
-      if (next === null) {
-        return;
-      }
-
-      event.preventDefault();
-      setFocusedIndex(next);
-      scrollToIndex(Math.floor(next / columnCount));
-      useUiStore.getState().selectSlots(cards[next].slotIds);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cards, columnCount, focusedIndex, scrollToIndex]);
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
