@@ -10,7 +10,7 @@ import { compose, onComposeProgress, redo, undo } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { blamedFiles, ErrorDialog } from "./ErrorDialog";
-import { ProgressBar } from "./ProgressBar";
+import { MergeProgressLine } from "./MergeProgressLine";
 import { ViewToggle } from "./ViewToggle";
 
 interface MergeResult {
@@ -139,7 +139,7 @@ export function Toolbar() {
   }
 
   return (
-    <div className="flex items-center gap-3 border-y border-slate-800 bg-slate-900/80 px-6 py-3 text-sm text-slate-300">
+    <div className="relative flex items-center gap-3 border-y border-slate-800 bg-slate-900/80 px-6 py-3 text-sm text-slate-300">
       <span>{countLabel(fileCount, "file")}</span>
       <span aria-hidden="true" className="text-slate-600">
         /
@@ -163,9 +163,6 @@ export function Toolbar() {
       </button>
       <ViewToggle />
       <div className="ml-auto flex items-center gap-3">
-        {isMerging && (
-          <ProgressBar done={progress.done} label="Merge progress" total={progress.total} />
-        )}
         {result && (
           <>
             <span>
@@ -190,6 +187,9 @@ export function Toolbar() {
           Merge
         </button>
       </div>
+      {isMerging && (
+        <MergeProgressLine done={progress.done} label="Merge progress" total={progress.total} />
+      )}
       {failure && modalOpen && (
         <ErrorDialog
           files={failure.files}
