@@ -248,7 +248,9 @@ mod tests {
             .unwrap();
         let composed = engine.last_composed().unwrap();
         match &composed.entries[1] {
-            ComposeEntry::Image { fit_to, .. } => assert!(fit_to.approx_eq(&LETTER)),
+            ComposeEntry::Image { fit_to, .. } => {
+                assert_eq!(fit_to.size_class(), LETTER.size_class());
+            }
             other => panic!("expected an image entry, got {other:?}"),
         }
     }

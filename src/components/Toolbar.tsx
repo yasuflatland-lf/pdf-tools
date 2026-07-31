@@ -1,9 +1,10 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { FolderOpen, Redo2, Undo2 } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { countLabel } from "../lib/format";
-import { resolveShortcut, shortcutHint } from "../lib/keyboard";
+import { shortcutHint } from "../lib/keyboard";
 import { redo, undo } from "../lib/tauri-api";
+import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { ErrorDialog } from "./ErrorDialog";
@@ -49,33 +50,22 @@ export function Toolbar() {
     }
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // A modal owns the keyboard while it is open; nothing here may reach the
-      // document behind it.
-      if (useUiStore.getState().modalOpen) {
-        return;
+  useShortcuts({
+    undo: () => {
+      if (!canUndo || isMerging) {
+        return false;
       }
-
-      const action = resolveShortcut(event);
-      if (action !== "undo" && action !== "redo") {
-        return;
+      void performUndo();
+      return true;
+    },
+    redo: () => {
+      if (!canRedo || isMerging) {
+        return false;
       }
-      if (event.defaultPrevented) {
-        return;
-      }
-
-      if (isMerging || (action === "redo" ? !canRedo : !canUndo)) {
-        return;
-      }
-
-      event.preventDefault();
-      void (action === "redo" ? performRedo() : performUndo());
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canRedo, canUndo, isMerging, performRedo, performUndo]);
+      void performRedo();
+      return true;
+    },
+  });
 
   return (
     <div className="relative flex h-12 items-center border-b border-slate-800 bg-slate-900/80 px-3.5 text-xs text-slate-400">

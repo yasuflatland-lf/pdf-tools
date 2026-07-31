@@ -12,9 +12,10 @@ import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
 import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
-import { nextFocusIndex, resolveShortcut } from "../lib/keyboard";
+import { nextFocusIndex, type ShortcutAction } from "../lib/keyboard";
 import { rasterizeSlot, reorder } from "../lib/tauri-api";
 import { createThumbnailCache, type ThumbnailCache } from "../lib/thumbnail-cache";
+import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 
@@ -135,48 +136,56 @@ interface CardFocusOptions {
  * both views need it and only the column count differs -- the list is a grid one
  * column wide. The selection follows the focus so that Delete always acts on the
  * card the user is looking at.
+ *
+ * The focus is held as a card key rather than a position: `cards` is rebuilt from
+ * every snapshot, so a bare index silently points at whichever card moved into
+ * that slot after a delete, a reorder or an undo.
  */
 export function useCardFocus({
   cards,
   columnCount,
   scrollToIndex,
 }: CardFocusOptions): number | null {
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [focused, setFocused] = useState<{ key: string; index: number } | null>(null);
+  const focusedIndex =
+    focused === null
+      ? -1
+      : (() => {
+          const byKey = cards.findIndex((card) => card.key === focused.key);
+          // The focused card is gone: stay where the user was looking, clamped.
+          return byKey >= 0 ? byKey : Math.min(focused.index, cards.length - 1);
+        })();
 
+  // Once the focus has fallen back onto whatever card took that position,
+  // re-anchor it to that card and make the selection follow it, or the next
+  // Delete acts on a card the ring is no longer drawn around.
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // A modal owns the keyboard while it is open; nothing here may reach the
-      // document behind it.
-      if (useUiStore.getState().modalOpen) {
-        return;
-      }
+    if (focused !== null && focusedIndex >= 0 && cards[focusedIndex].key !== focused.key) {
+      setFocused({ key: cards[focusedIndex].key, index: focusedIndex });
+      useUiStore.getState().selectSlots(cards[focusedIndex].slotIds);
+    }
+  }, [cards, focused, focusedIndex]);
 
-      // dnd-kit's keyboard sensor steers a picked-up card with the same arrows
-      // and calls `preventDefault` while it does; moving the focus as well would
-      // drag one card and select another.
-      if (event.defaultPrevented) {
-        return;
-      }
+  const moveFocus = (action: ShortcutAction): boolean => {
+    const next = nextFocusIndex(action, focusedIndex, cards.length, columnCount);
+    if (next === null) {
+      return false;
+    }
 
-      const action = resolveShortcut(event);
-      const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
-      const next =
-        action === null ? null : nextFocusIndex(action, current, cards.length, columnCount);
-      if (next === null) {
-        return;
-      }
+    setFocused({ key: cards[next].key, index: next });
+    scrollToIndex(Math.floor(next / columnCount));
+    useUiStore.getState().selectSlots(cards[next].slotIds);
+    return true;
+  };
 
-      event.preventDefault();
-      setFocusedIndex(next);
-      scrollToIndex(Math.floor(next / columnCount));
-      useUiStore.getState().selectSlots(cards[next].slotIds);
-    };
+  useShortcuts({
+    "focus-previous": () => moveFocus("focus-previous"),
+    "focus-next": () => moveFocus("focus-next"),
+    "focus-row-previous": () => moveFocus("focus-row-previous"),
+    "focus-row-next": () => moveFocus("focus-row-next"),
+  });
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cards, columnCount, focusedIndex, scrollToIndex]);
-
-  return focusedIndex;
+  return focusedIndex >= 0 ? focusedIndex : null;
 }
 
 interface CardRowsOptions {

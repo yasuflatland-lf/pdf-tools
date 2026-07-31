@@ -40,6 +40,7 @@ export function ErrorDialog({
   const filesLabelId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
 
+  // The modal owns Escape, so this listener must remain outside useShortcuts.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
