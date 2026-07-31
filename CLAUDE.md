@@ -5,7 +5,7 @@ State: v0.1.0. The merge plan (an ordered list of one-page slots) is canonical i
 
 ## Mandatory rules (harness)
 
-- **Write all code comments in English.** Name identifiers in English too.
+- **Write everything in this repository in English** — code comments, identifiers, commit messages, and **the title and body of every pull request and issue**.
 - **TDD**: write the failing test first, then the smallest implementation (cargo-nextest / Vitest).
 - **Layer boundaries**: `domain` is pure (no IO/async/external crates); IO lives behind the `PdfEngine`/`ImageDecoder` ports; deps flow presentation→application→domain and infrastructure→domain, never back.
 - **Do not swap libraries** (Tauri 2 / pdfium-render / image / @tanstack/react-virtual / @dnd-kit / oxlint / oxfmt are fixed choices).
@@ -20,7 +20,8 @@ State: v0.1.0. The merge plan (an ordered list of one-page slots) is canonical i
 - **L2 = `docs/`**: how the project works.
   - `docs/architecture.md` — layering, boundaries, ports, state ownership, measured vs estimated SLOs
   - `docs/development.md` — tech stack, dev commands, testing policy, PR rules
-- **L3 = `.claude/`**: deep per-task reference. Not populated yet — add files here rather than growing L1.
+- **L3 = `.claude/`**: deep per-task reference — add files here rather than growing L1.
+  - `.claude/macos-code-signing.md` — the self-signed signing certificate: generating it, registering the secrets, verifying it before a release run
 
 ## Source of truth
 
