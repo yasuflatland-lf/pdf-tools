@@ -483,7 +483,7 @@ describe("Toolbar", () => {
     expect(blamed).toEqual(["report.pdf"]);
     expect(dialog?.textContent).toContain("broken xref");
 
-    await click(getButton(container, "閉じる"));
+    await click(getButton(container, "Close"));
 
     expect(container.querySelector('[role="alertdialog"]')).toBeNull();
     expect(container.textContent).toContain("Merge failed");

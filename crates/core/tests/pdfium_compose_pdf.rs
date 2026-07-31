@@ -140,7 +140,10 @@ fn compose_preserves_each_page_size() {
     };
     engine().compose(&plan, &out).unwrap();
     let info = engine().probe(&out).unwrap();
-    assert!(!info.page_sizes[0].approx_eq(&info.page_sizes[1]));
+    assert_ne!(
+        info.page_sizes[0].size_class(),
+        info.page_sizes[1].size_class()
+    );
 }
 
 #[test]

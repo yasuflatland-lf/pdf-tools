@@ -3,6 +3,7 @@ import { removeSlots } from "../lib/tauri-api";
 import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
+import { useSnapshotSync } from "../store/useSnapshotSync";
 import { DropZone } from "./DropZone";
 import { SourceErrorCard } from "./PageCard";
 import { PageGrid } from "./PageGrid";
@@ -30,6 +31,7 @@ function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
 }
 
 export function AppShell() {
+  useSnapshotSync();
   const sources = usePlanStore((state) => state.sources);
   const slotCount = usePlanStore((state) => state.slots.length);
   const viewMode = useUiStore((state) => state.viewMode);

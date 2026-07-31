@@ -166,6 +166,34 @@ describe("PageGrid", () => {
     expect(requested).toHaveLength(8);
   });
 
+  // A scroll container's clientWidth excludes its vertical scrollbar; every
+  // element outside it counts the space that scrollbar occupies. macOS overlay
+  // scrollbars hide the difference, Windows WebView2 does not, and 15px is
+  // enough to flip `getColumnCount` at a track boundary -- 1145px is five
+  // columns, 1160px is six, and six columns leave every card under
+  // CARD_MIN_WIDTH. Hence both widths: only measuring the listbox itself gives
+  // five.
+  it("counts columns from the scrolling element, whose width excludes the scrollbar", async () => {
+    load(source(10, "ungrouped", 12), 12);
+
+    const container = await renderGrid();
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    expect(listbox).not.toBeNull();
+    Object.defineProperty(listbox, "clientWidth", { configurable: true, value: 1145 });
+
+    for (let ancestor = listbox?.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      Object.defineProperty(ancestor, "clientWidth", { configurable: true, value: 1160 });
+      if (ancestor === container) break;
+    }
+
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    const row = container.querySelector<HTMLElement>('[style*="grid-template-columns"]');
+    expect(row?.style.gridTemplateColumns).toBe("repeat(5, minmax(0, 1fr))");
+  });
+
   it("collapses a grouped source into one card that reports its page count", async () => {
     load(source(10, "grouped", 3), 3);
 
@@ -345,6 +373,6 @@ describe("PageGrid", () => {
 
     const container = await renderGrid();
 
-    expect(container.textContent).toContain("サムネイルを表示できません");
+    expect(container.textContent).toContain("Thumbnail unavailable");
   });
 });
