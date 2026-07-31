@@ -102,7 +102,7 @@ Each layer is tested at the level where its mistakes actually live:
   kind**.
 - **Every gate must be green before merge**: `cargo clippy -- -D warnings`, `cargo fmt --check`,
   `cargo nextest run`, `pnpm exec tsc --noEmit`, `pnpm oxlint`, `pnpm oxfmt --check`, `pnpm knip`,
-  `pnpm vitest run`.
+  `pnpm vitest run` (or `pnpm run test:coverage`, which is what CI runs).
 - **Never commit the PDFium binary** or anything else under `src-tauri/resources/pdfium/`.
 - `docs/superpowers/` is git-ignored. Anything written there does not ship — put documentation
   that should ship in `docs/architecture.md` or this file.
@@ -111,12 +111,16 @@ Each layer is tested at the level where its mistakes actually live:
 
 - **CI** (`.github/workflows/ci.yml`) runs two jobs: _Rust_ on macOS (fetch PDFium → clippy →
   fmt → `cargo llvm-cov nextest` → Codecov) and _Frontend_ on Ubuntu (tsc → oxlint → oxfmt →
-  knip → vitest).
-- The Codecov upload is a **hard gate** (`fail_ci_if_error: true`, no `continue-on-error`): a
+  knip → `pnpm run test:coverage` → Codecov).
+- **Each job uploads under its own Codecov flag** — `rust` and `frontend`, mapped to their paths
+  in `codecov.yml`. The two figures describe different languages measured by different tools, so
+  a single blended number would hide a drop on one side behind a rise on the other; the flags are
+  also what the two README badges select on.
+- Both Codecov uploads are a **hard gate** (`fail_ci_if_error: true`, no `continue-on-error`): a
   dropped upload leaves Codecov showing the previous commit's numbers, which is indistinguishable
   from a passing coverage report. `CODECOV_TOKEN` is a repository secret, so it is unavailable to
-  pull requests from forks — such a run fails on the upload step and needs a maintainer to re-run
-  it from a branch in this repository.
+  pull requests from forks — such a run fails on the upload step in **both** jobs and needs a
+  maintainer to re-run it from a branch in this repository.
 - **Dependency updates** are proposed by Renovate (`renovate.json`), grouped per manager. A
   release must be **at least three days old** before Renovate offers it (`minimumReleaseAge`), so
   a version pulled from its registry shortly after publication — a broken or compromised one —
