@@ -1,7 +1,6 @@
-import { useEffect } from "react";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
-import { resolveShortcut } from "../lib/keyboard";
 import { removeSlots } from "../lib/tauri-api";
+import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { DropZone } from "./DropZone";
@@ -36,48 +35,29 @@ export function AppShell() {
   const viewMode = useUiStore((state) => state.viewMode);
   const unusableSources = sources.filter((source) => source.status.kind !== "ready");
 
-  /**
-   * The document-wide shortcuts. They live on the shell rather than on the grid
-   * because the grid unmounts once the plan is empty, and Escape has to keep
-   * working there. Undo and redo stay in the toolbar, which owns the flags that
-   * gate them; handling them here as well would run each of them twice.
-   */
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // A modal owns the keyboard while it is open; nothing here may reach the
-      // document behind it.
-      if (useUiStore.getState().modalOpen) {
-        return;
+  // These stay on the shell so Escape works even after the grid unmounts with
+  // an empty plan. History and focus register their own disjoint actions.
+  useShortcuts({
+    "select-all": () => {
+      useUiStore.getState().selectSlots(usePlanStore.getState().slots.map((slot) => slot.id));
+      return true;
+    },
+    "clear-selection": () => {
+      useUiStore.getState().clearSelection();
+      return true;
+    },
+    "remove-selected": () => {
+      const selected = useUiStore.getState().selectedSlots;
+      if (selected.size === 0) {
+        return false;
       }
 
-      // A card drag consumes its own keys; nothing already handled is a shortcut.
-      if (event.defaultPrevented) {
-        return;
-      }
-
-      const action = resolveShortcut(event);
-      if (action === "select-all") {
-        event.preventDefault();
-        useUiStore.getState().selectSlots(usePlanStore.getState().slots.map((slot) => slot.id));
-      } else if (action === "clear-selection") {
-        event.preventDefault();
-        useUiStore.getState().clearSelection();
-      } else if (action === "remove-selected") {
-        const selected = useUiStore.getState().selectedSlots;
-        if (selected.size === 0) {
-          return;
-        }
-
-        event.preventDefault();
-        void removeSlots([...selected])
-          .then((snapshot) => usePlanStore.getState().setSnapshot(snapshot))
-          .catch((error: unknown) => console.error("remove failed", error));
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+      void removeSlots([...selected])
+        .then((snapshot) => usePlanStore.getState().setSnapshot(snapshot))
+        .catch((error: unknown) => console.error("remove failed", error));
+      return true;
+    },
+  });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">

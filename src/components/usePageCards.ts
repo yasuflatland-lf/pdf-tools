@@ -12,9 +12,10 @@ import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
 import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
-import { nextFocusIndex, resolveShortcut } from "../lib/keyboard";
+import { nextFocusIndex, type ShortcutAction } from "../lib/keyboard";
 import { rasterizeSlot, reorder } from "../lib/tauri-api";
 import { createThumbnailCache, type ThumbnailCache } from "../lib/thumbnail-cache";
+import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 
@@ -143,38 +144,25 @@ export function useCardFocus({
 }: CardFocusOptions): number | null {
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // A modal owns the keyboard while it is open; nothing here may reach the
-      // document behind it.
-      if (useUiStore.getState().modalOpen) {
-        return;
-      }
+  const moveFocus = (action: ShortcutAction): boolean => {
+    const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
+    const next = nextFocusIndex(action, current, cards.length, columnCount);
+    if (next === null) {
+      return false;
+    }
 
-      // dnd-kit's keyboard sensor steers a picked-up card with the same arrows
-      // and calls `preventDefault` while it does; moving the focus as well would
-      // drag one card and select another.
-      if (event.defaultPrevented) {
-        return;
-      }
+    setFocusedIndex(next);
+    scrollToIndex(Math.floor(next / columnCount));
+    useUiStore.getState().selectSlots(cards[next].slotIds);
+    return true;
+  };
 
-      const action = resolveShortcut(event);
-      const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
-      const next =
-        action === null ? null : nextFocusIndex(action, current, cards.length, columnCount);
-      if (next === null) {
-        return;
-      }
-
-      event.preventDefault();
-      setFocusedIndex(next);
-      scrollToIndex(Math.floor(next / columnCount));
-      useUiStore.getState().selectSlots(cards[next].slotIds);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cards, columnCount, focusedIndex, scrollToIndex]);
+  useShortcuts({
+    "focus-previous": () => moveFocus("focus-previous"),
+    "focus-next": () => moveFocus("focus-next"),
+    "focus-row-previous": () => moveFocus("focus-row-previous"),
+    "focus-row-next": () => moveFocus("focus-row-next"),
+  });
 
   return focusedIndex;
 }
