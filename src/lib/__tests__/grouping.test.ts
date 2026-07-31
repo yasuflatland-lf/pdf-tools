@@ -7,7 +7,7 @@ function slot(id: number, sourceId: number, page: number): PageSlotDto {
   return { id, source: sourceId, page };
 }
 
-function source(id: number, grouping: string): SourceFileDto {
+function source(id: number, grouping: SourceFileDto["grouping"]): SourceFileDto {
   return {
     id,
     path: `/documents/${id}.pdf`,

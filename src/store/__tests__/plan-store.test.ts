@@ -3,7 +3,7 @@ import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { createPlanStore } from "../plan-store";
 import { useUiStore } from "../ui-store";
 
-function source(id: number, grouping: string): SourceFileDto {
+function source(id: number, grouping: SourceFileDto["grouping"]): SourceFileDto {
   return {
     id,
     path: `/documents/${id}.pdf`,
