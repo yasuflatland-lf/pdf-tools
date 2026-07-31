@@ -1,36 +1,15 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
 use pdf_tools_core::domain::geometry::RasterSpec;
 use pdf_tools_core::domain::ids::SlotId;
 use pdf_tools_core::domain::source::SourceKind;
-use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use pdf_tools_core::infrastructure::png::encode_png;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::dto::{ComposeProgressDto, MergeReportDto, PlanSnapshot};
 use super::state::AppState;
-
-/// Managed application state for PDFium startup.
-pub struct PdfiumState(Result<Arc<PdfiumEngine>, String>);
-
-impl PdfiumState {
-    pub fn new(engine: Result<Arc<PdfiumEngine>, String>) -> Self {
-        Self(engine)
-    }
-}
-
-#[tauri::command]
-pub fn pdfium_health(state: State<'_, PdfiumState>) -> Result<String, String> {
-    let health = match &state.0 {
-        Ok(engine) => Ok(engine.version()),
-        Err(error) => Err(error.clone()),
-    };
-    tracing::debug!(?health, "pdfium_health");
-    health
-}
 
 /// The body of the `add_sources` command, kept free of Tauri's `State` wrapper
 /// so it can be exercised in tests without starting a webview.
@@ -47,26 +26,6 @@ pub fn add_sources_inner(state: &AppState, paths: Vec<String>) -> Result<PlanSna
 #[tauri::command]
 pub fn add_sources(state: State<'_, AppState>, paths: Vec<String>) -> Result<PlanSnapshot, String> {
     add_sources_inner(&state, paths)
-}
-
-pub fn insert_at_inner(
-    state: &AppState,
-    at: usize,
-    slot_ids: Vec<u64>,
-) -> Result<PlanSnapshot, String> {
-    let slot_ids = slot_ids.into_iter().map(SlotId).collect::<Vec<_>>();
-    let mut session = state.session();
-    session.insert_at(at, &slot_ids);
-    Ok(PlanSnapshot::from_session(&session))
-}
-
-#[tauri::command]
-pub fn insert_at(
-    state: State<'_, AppState>,
-    at: usize,
-    slot_ids: Vec<u64>,
-) -> Result<PlanSnapshot, String> {
-    insert_at_inner(&state, at, slot_ids)
 }
 
 pub fn reorder_inner(
@@ -237,6 +196,8 @@ pub fn rasterize_slot(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use pdf_tools_core::application::errors::PdfError;
     use pdf_tools_core::domain::geometry::PageSize;
     use pdf_tools_core::domain::source::DocumentInfo;

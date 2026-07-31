@@ -68,24 +68,6 @@ impl PlanSession {
         self.finish_change();
     }
 
-    /// Moves the named existing slots to `at`, indexed into the sequence that
-    /// remains after those slots are removed. Unknown IDs are ignored.
-    pub fn insert_at(&mut self, at: usize, slot_ids: &[SlotId]) {
-        self.begin_change();
-        let slots = self
-            .document
-            .plan()
-            .slots()
-            .iter()
-            .filter(|slot| slot_ids.contains(&slot.id))
-            .cloned()
-            .collect::<Vec<_>>();
-        let remaining = operations::remove(self.document.plan(), slot_ids);
-        let plan = operations::insert_at(&remaining, at, &slots);
-        self.document = self.document.with_plan(plan);
-        self.finish_change();
-    }
-
     pub fn reorder(&mut self, from: Range<usize>, to: usize) {
         self.begin_change();
         let plan = operations::reorder(self.document.plan(), from, to);
@@ -227,13 +209,8 @@ mod tests {
     fn apply_arbitrary_op(session: &mut PlanSession, op: usize) {
         match op {
             0 => {
-                let ids = session
-                    .plan()
-                    .slots()
-                    .last()
-                    .map(|slot| vec![slot.id])
-                    .unwrap_or_default();
-                session.insert_at(session.plan().len() / 2, &ids);
+                let len = session.plan().len();
+                session.reorder(len.saturating_sub(1)..len, len / 2);
             }
             1 => {
                 let len = session.plan().len();
@@ -305,9 +282,11 @@ mod tests {
             },
         );
         s.add_sources(&FakePdfEngine::new(), &images, &["/image.png".into()]);
-        let image_slot = s.plan().slots().last().expect("image slot").id;
+        let image_index = s.plan().len() - 1;
 
-        s.insert_at(1, &[image_slot]);
+        // The drag the UI can actually make: the trailing image slot lands
+        // strictly inside the PDF's run, which is what ungroups the PDF.
+        s.reorder(image_index..image_index + 1, 1);
         assert!(!s.is_grouped(source_id));
         s.undo();
         assert!(s.is_grouped(source_id));

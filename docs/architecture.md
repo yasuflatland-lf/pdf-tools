@@ -110,8 +110,8 @@ implementation, and every application-layer test runs against it.
 One rule governs both directions, and it is evaluated only after an operation commits — never
 mid-drag:
 
-- **A source ungroups when a slot from another source lands strictly inside its run** (between its
-  first and last slot). Insertions at a boundary between groups do not ungroup anything.
+- **A source ungroups when an operation leaves its slots non-contiguous or no longer ascending.**
+  In the current UI, that operation is a drag (`reorder`).
 - **An ungrouped source regroups automatically once its slots are contiguous again _and_ their
   page numbers increase monotonically.** Deletion leaves gaps (1, 2, 4, 5) that stay monotonic, so
   those refold; a swap (1, 2, 7, 4, 5) does not.
@@ -173,16 +173,14 @@ pinning that a panic while the session is locked does not lose the document — 
 
 Every plan command returns a fresh `PlanSnapshot`.
 
-| Command                          | Semantics                                                                          |
-| -------------------------------- | ---------------------------------------------------------------------------------- |
-| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                           |
-| `insert_at(index, slot_ids)`     | Insert at a position; ungroup the affected source if the insert lands inside a run |
-| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                               |
-| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping    |
-| `undo()` / `redo()`              | Move along the plan stack                                                          |
-| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                                |
-| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                       |
-| `pdfium_health()`                | Report whether PDFium loaded, and its version                                      |
+| Command                          | Semantics                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
+| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
+| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
+| `undo()` / `redo()`              | Move along the plan stack                                                       |
+| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
+| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                    |
 
 Two shapes are deliberate:
 

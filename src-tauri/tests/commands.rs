@@ -11,8 +11,8 @@ use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
-    add_sources_inner, compose_inner, insert_at_inner, rasterize_slot_inner, redo_inner,
-    remove_slots_inner, reorder_inner, undo_inner,
+    add_sources_inner, compose_inner, rasterize_slot_inner, redo_inner, remove_slots_inner,
+    reorder_inner, undo_inner,
 };
 use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
@@ -205,7 +205,7 @@ fn snapshot_of(state: &AppState) -> PlanSnapshot {
     PlanSnapshot::from_session(&state.session())
 }
 
-fn state_with_pdf_and_image() -> (AppState, u64) {
+fn state_with_pdf_and_image() -> AppState {
     let state = AppState::with_engines(
         Arc::new(FakePdfEngine::new().with_document(
             "/document.pdf",
@@ -224,9 +224,8 @@ fn state_with_pdf_and_image() -> (AppState, u64) {
         )),
     );
     add_sources_inner(&state, vec!["/document.pdf".into()]).unwrap();
-    let snapshot = add_sources_inner(&state, vec!["/image.png".into()]).unwrap();
-    let image_slot_id = snapshot.slots.last().expect("image slot").id;
-    (state, image_slot_id)
+    add_sources_inner(&state, vec!["/image.png".into()]).unwrap();
+    state
 }
 
 fn png_width(bytes: &[u8]) -> u32 {
@@ -282,9 +281,10 @@ fn undo_on_a_fresh_state_is_a_no_op() {
 }
 
 #[test]
-fn inserting_inside_a_group_marks_the_source_ungrouped_in_the_snapshot() {
-    let (state, image_slot_id) = state_with_pdf_and_image();
-    let snapshot = insert_at_inner(&state, 1, vec![image_slot_id]).unwrap();
+fn dragging_a_slot_inside_a_group_marks_the_source_ungrouped_in_the_snapshot() {
+    let state = state_with_pdf_and_image();
+    let trailing_index = state.session().plan().len() - 1;
+    let snapshot = reorder_inner(&state, trailing_index, trailing_index + 1, 1).unwrap();
     let pdf_source = snapshot
         .sources
         .iter()
