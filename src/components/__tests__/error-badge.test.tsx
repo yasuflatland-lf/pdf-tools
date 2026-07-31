@@ -34,7 +34,7 @@ describe("ErrorBadge", () => {
   it("shows a password-required badge for encrypted sources", async () => {
     const container = await render(<ErrorBadge status={{ kind: "encrypted" }} />);
 
-    expect(container.textContent).toMatch(/パスワード/);
+    expect(container.textContent).toMatch(/Password protected/);
   });
 
   it("shows the reason for unreadable sources", async () => {

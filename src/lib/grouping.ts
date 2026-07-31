@@ -26,9 +26,9 @@ function createGroup(slot: PageSlotDto): DisplayGroup {
 }
 
 /**
- * Mirrors `domain::grouping::group_contiguous`: a run of neighbouring slots from
- * one source collapses into a single card, but only while that source is
- * grouped. Ungrouped and unknown sources yield one card per page.
+ * A run is folded here, in the frontend, from the snapshot the backend produced;
+ * Rust owns only the grouped/ungrouped decision. Ungrouped and unknown sources
+ * yield one card per page.
  */
 export function groupContiguous(slots: PageSlotDto[], sources: SourceFileDto[]): DisplayGroup[] {
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
