@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use crate::application::errors::PdfError;
+use crate::application::errors::{ImageError, PdfError};
 use crate::application::ports::{ImageDecoder, PdfEngine};
 use crate::domain::document::MergeDocument;
-use crate::domain::ids::{IdSequence, PageIndex};
+use crate::domain::ids::{IdSequence, PageIndex, SourceId};
 use crate::domain::operations::insert_at;
 use crate::domain::plan::PageSlot;
-use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
+use crate::domain::source::{SourceFile, SourceKind, SourceStatus, UnreadableReason};
 
 pub struct AddSources<'a> {
     pub pdf: &'a dyn PdfEngine,
@@ -57,23 +57,38 @@ impl AddSources<'_> {
                             status: SourceStatus::Ready,
                         }
                     }
-                    Err(PdfError::Encrypted { .. }) => SourceFile {
-                        id: source_id,
-                        path: path.clone(),
-                        kind,
-                        page_count: 0,
-                        page_sizes: Vec::new(),
-                        status: SourceStatus::Encrypted,
-                    },
-                    Err(error) => SourceFile {
-                        id: source_id,
-                        path: path.clone(),
-                        kind,
-                        page_count: 0,
-                        page_sizes: Vec::new(),
-                        status: SourceStatus::Unreadable {
-                            reason: error.to_string(),
+                    Err(error) => match error {
+                        PdfError::Encrypted { .. } => SourceFile {
+                            id: source_id,
+                            path: path.clone(),
+                            kind,
+                            page_count: 0,
+                            page_sizes: Vec::new(),
+                            status: SourceStatus::Encrypted,
                         },
+                        error @ PdfError::EngineUnavailable(_) => unreadable_source(
+                            &error,
+                            source_id,
+                            path,
+                            kind,
+                            UnreadableReason::EngineUnavailable,
+                        ),
+                        error @ PdfError::Missing { .. } => unreadable_source(
+                            &error,
+                            source_id,
+                            path,
+                            kind,
+                            UnreadableReason::Missing,
+                        ),
+                        error @ (PdfError::Unreadable { .. }
+                        | PdfError::PageOutOfRange { .. }
+                        | PdfError::WriteFailed { .. }) => unreadable_source(
+                            &error,
+                            source_id,
+                            path,
+                            kind,
+                            UnreadableReason::Damaged,
+                        ),
                     },
                 },
                 SourceKind::Image => match self.images.probe(path) {
@@ -92,15 +107,29 @@ impl AddSources<'_> {
                             status: SourceStatus::Ready,
                         }
                     }
-                    Err(error) => SourceFile {
-                        id: source_id,
-                        path: path.clone(),
-                        kind,
-                        page_count: 0,
-                        page_sizes: Vec::new(),
-                        status: SourceStatus::Unreadable {
-                            reason: error.to_string(),
-                        },
+                    Err(error) => match error {
+                        error @ ImageError::UnsupportedFormat { .. } => unreadable_source(
+                            &error,
+                            source_id,
+                            path,
+                            kind,
+                            UnreadableReason::UnsupportedFormat,
+                        ),
+                        error @ ImageError::Missing { .. } => unreadable_source(
+                            &error,
+                            source_id,
+                            path,
+                            kind,
+                            UnreadableReason::Missing,
+                        ),
+                        error @ (ImageError::Unreadable { .. }
+                        | ImageError::EncodeFailed { .. }) => unreadable_source(
+                            &error,
+                            source_id,
+                            path,
+                            kind,
+                            UnreadableReason::Damaged,
+                        ),
                     },
                 },
             };
@@ -110,6 +139,24 @@ impl AddSources<'_> {
 
         let plan = insert_at(document.plan(), document.plan().len(), &new_slots);
         MergeDocument::new(plan, result_sources)
+    }
+}
+
+fn unreadable_source(
+    error: &impl std::fmt::Display,
+    id: SourceId,
+    path: &Path,
+    kind: SourceKind,
+    reason: UnreadableReason,
+) -> SourceFile {
+    tracing::warn!(%error, path = %path.display(), "source could not be read");
+    SourceFile {
+        id,
+        path: path.to_path_buf(),
+        kind,
+        page_count: 0,
+        page_sizes: Vec::new(),
+        status: SourceStatus::Unreadable(reason),
     }
 }
 
@@ -134,7 +181,9 @@ mod tests {
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::{IdSequence, PageIndex, SlotId, SourceId};
     use crate::domain::plan::{MergePlan, PageSlot};
-    use crate::domain::source::{DocumentInfo, ImageInfo, SourceKind, SourceStatus};
+    use crate::domain::source::{
+        DocumentInfo, ImageInfo, SourceKind, SourceStatus, UnreadableReason,
+    };
     use crate::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 
     use super::*;
@@ -261,7 +310,7 @@ mod tests {
         assert_eq!(result.sources()[0].path, PathBuf::from("/bad.pdf"));
         assert!(matches!(
             result.sources()[0].status,
-            SourceStatus::Unreadable { .. }
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
         ));
         assert_eq!(result.sources()[1].path, PathBuf::from("/good.pdf"));
         assert_eq!(result.sources()[1].status, SourceStatus::Ready);
@@ -370,7 +419,98 @@ mod tests {
         assert_eq!(result.plan().len(), 0);
         assert!(matches!(
             result.sources()[0].status,
-            SourceStatus::Unreadable { .. }
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
         ));
+    }
+
+    fn status_for_pdf_error(error: PdfError) -> SourceStatus {
+        let pdf = FakePdfEngine::new().with_failure("/bad.pdf", error);
+        AddSources {
+            pdf: &pdf,
+            images: &FakeImageDecoder::new(),
+        }
+        .execute(
+            &MergeDocument::default(),
+            &mut IdSequence::default(),
+            &["/bad.pdf".into()],
+        )
+        .sources()[0]
+            .status
+    }
+
+    #[test]
+    fn pdf_probe_errors_map_to_typed_unreadable_reasons() {
+        assert_eq!(
+            status_for_pdf_error(PdfError::EngineUnavailable("not loaded".into())),
+            SourceStatus::Unreadable(UnreadableReason::EngineUnavailable)
+        );
+        assert_eq!(
+            status_for_pdf_error(PdfError::Unreadable {
+                path: "/bad.pdf".into(),
+                reason: "broken xref".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
+        );
+        assert_eq!(
+            status_for_pdf_error(PdfError::Missing {
+                path: "/bad.pdf".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::Missing)
+        );
+        assert_eq!(
+            status_for_pdf_error(PdfError::PageOutOfRange { page: 2, count: 1 }),
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
+        );
+        assert_eq!(
+            status_for_pdf_error(PdfError::WriteFailed {
+                path: "/bad.pdf".into(),
+                reason: "disk full".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
+        );
+    }
+
+    fn status_for_image_error(error: ImageError) -> SourceStatus {
+        let images = FakeImageDecoder::new().with_failure("/bad.png", error);
+        AddSources {
+            pdf: &FakePdfEngine::new(),
+            images: &images,
+        }
+        .execute(
+            &MergeDocument::default(),
+            &mut IdSequence::default(),
+            &["/bad.png".into()],
+        )
+        .sources()[0]
+            .status
+    }
+
+    #[test]
+    fn image_probe_errors_map_to_typed_unreadable_reasons() {
+        assert_eq!(
+            status_for_image_error(ImageError::UnsupportedFormat {
+                path: "/bad.png".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::UnsupportedFormat)
+        );
+        assert_eq!(
+            status_for_image_error(ImageError::Unreadable {
+                path: "/bad.png".into(),
+                reason: "truncated data".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
+        );
+        assert_eq!(
+            status_for_image_error(ImageError::Missing {
+                path: "/bad.png".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::Missing)
+        );
+        assert_eq!(
+            status_for_image_error(ImageError::EncodeFailed {
+                reason: "encoder stopped".into(),
+            }),
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
+        );
     }
 }
