@@ -20,7 +20,8 @@ State: v0.1.0. The merge plan (an ordered list of one-page slots) is canonical i
 - **L2 = `docs/`**: how the project works.
   - `docs/architecture.md` — layering, boundaries, ports, state ownership, measured vs estimated SLOs
   - `docs/development.md` — tech stack, dev commands, testing policy, PR rules
-- **L3 = `.claude/`**: deep per-task reference. Not populated yet — add files here rather than growing L1.
+- **L3 = `.claude/`**: deep per-task reference — add files here rather than growing L1.
+  - `.claude/macos-code-signing.md` — the self-signed signing certificate: generating it, registering the secrets, verifying it before a release run
 
 ## Source of truth
 

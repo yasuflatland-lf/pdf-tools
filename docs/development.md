@@ -116,7 +116,15 @@ Each layer is tested at the level where its mistakes actually live:
   ships an unsigned x86_64 slice. `scripts/macos/verify-macos-bundles.sh` then verifies the
   signature of the `.app` _and_ of the `.app` mounted inside the `.dmg`.
 - Missing macOS signing secrets fail the job up front, so an unsigned macOS build can never be
-  published by accident.
+  published by accident. The three secrets are `APPLE_CERTIFICATE` (a base64-encoded `.p12`),
+  `APPLE_CERTIFICATE_PASSWORD` and `KEYCHAIN_PASSWORD`.
+- The signing certificate is **self-signed** — not issued by Apple, and the app is not notarized,
+  so Gatekeeper still warns on first launch. Generate it with
+  `P12_PASSWORD='…' ./scripts/macos/generate-self-signed-cert.sh`, which writes a git-ignored
+  `cert-out/`. Its Common Name must start with `Developer ID Application: ` and it **must carry an
+  OU**, which Tauri reads as the Team ID; without one the build fails with `certificate missing
+organization unit for common name`. Full procedure, local verification recipe and failure modes:
+  [`.claude/macos-code-signing.md`](../.claude/macos-code-signing.md).
 
 ## Performance measurement
 
