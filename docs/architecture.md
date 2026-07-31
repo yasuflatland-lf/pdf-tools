@@ -119,8 +119,8 @@ A collapsed card shows the number of pages actually present, not the original pa
 `source.page_count` still counts pages the user has since deleted.
 
 Folding a run into a card is derived in the frontend by `groupContiguous`
-(`src/lib/grouping.ts`) from the snapshot the backend produced. Rust owns only the grouped/ungrouped
-decision, which it ships in that snapshot.
+(`src/lib/grouping.ts`) from the snapshot the backend produced. Rust derives the grouped/ungrouped
+decision from the plan on demand with `can_regroup` and ships that projection in the snapshot.
 
 ## Immutability and undo
 
@@ -138,10 +138,13 @@ costs ~24 KB per stack entry — cheap enough that no diffing scheme is warrante
 
 | Kind                     | Home                       | Contents                                                                                              |
 | ------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Canonical document state | **Rust (`crates/core`)**   | `MergePlan`, undo/redo stacks, the `SourceFile` list, each source's grouped/ungrouped state           |
+| Canonical document state | **Rust (`crates/core`)**   | `MergePlan`, undo/redo stacks, the `SourceFile` list                                                  |
+| Derived document data    | **Rust → snapshot**        | Each source's grouped/ungrouped decision, computed from `MergePlan` by `can_regroup`                  |
 | Transient view state     | **Zustand (`src/store/`)** | expanded/collapsed cards, selection, focus, grid vs list, drag preview position, thumbnail blob cache |
 
-The dividing question is "must undo restore it?". If yes, it lives in Rust.
+The dividing question is "must undo restore it?". If yes, it lives in Rust or is derived from
+canonical Rust state. Grouping needs no stored flag: undo restores the plan, which restores
+everything derived from that plan, including the grouping decision shipped to the frontend.
 
 This is why `plan-store.ts` exposes `setSnapshot` and nothing else: **every command returns a whole
 `PlanSnapshot` and the store only ever replaces its contents.** A local `reorder` helper on the
