@@ -1,8 +1,10 @@
+import { RotateCcw, RotateCw } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { countLabel } from "../lib/format";
 import { ErrorBadge } from "./ErrorBadge";
+import { RotatedThumbnail } from "./RotatedThumbnail";
 import { useThumbnail } from "./useThumbnail";
 
 interface PageCardProps {
@@ -11,8 +13,10 @@ interface PageCardProps {
   fileName: string;
   pageCount: number;
   pageNumber: number;
+  rotation: number;
   slotId: number;
   thumbnailWidth: number;
+  onRotate: (delta: number) => void;
   selected?: boolean;
 }
 
@@ -51,8 +55,10 @@ export function PageCard({
   fileName,
   pageCount,
   pageNumber,
+  rotation,
   slotId,
   thumbnailWidth,
+  onRotate,
   selected,
 }: PageCardProps) {
   const { url: thumbnailUrl, failed } = useThumbnail(cache, slotId, thumbnailWidth);
@@ -65,28 +71,56 @@ export function PageCard({
       className={selected ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-800"}
       fileName={fileName}
       preview={
-        thumbnailUrl ? (
-          <img
-            className="h-full w-full object-contain"
-            src={thumbnailUrl}
-            alt={`Thumbnail for ${fileName}`}
-          />
-        ) : (
-          // A page-shaped placeholder keeps the card the same size before the
-          // thumbnail arrives, so a scrolling grid never reflows.
-          <div className="flex flex-col items-center">
-            <div
-              className="h-20 w-16 rounded border border-slate-600 bg-slate-700"
-              role="img"
-              aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
+        <div className="group relative h-full w-full">
+          {thumbnailUrl ? (
+            <RotatedThumbnail
+              alt={`Thumbnail for ${fileName}`}
+              rotation={rotation}
+              src={thumbnailUrl}
             />
-            {failed && (
-              <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
-                Thumbnail unavailable
-              </p>
-            )}
+          ) : (
+            // A page-shaped placeholder keeps the card the same size before
+            // the thumbnail arrives, so a scrolling grid never reflows.
+            <div className="grid h-full place-items-center">
+              <div className="flex flex-col items-center">
+                <div
+                  className="h-20 w-16 rounded border border-slate-600 bg-slate-700"
+                  role="img"
+                  aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
+                />
+                {failed && (
+                  <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
+                    Thumbnail unavailable
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <button
+              aria-label={`Rotate left ${fileName}`}
+              className="grid size-8 place-items-center rounded-md border border-slate-600 bg-slate-900/90 text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
+              onClick={() => onRotate(-1)}
+              onKeyDown={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              title="Rotate left"
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={16} strokeWidth={1.8} />
+            </button>
+            <button
+              aria-label={`Rotate right ${fileName}`}
+              className="grid size-8 place-items-center rounded-md border border-slate-600 bg-slate-900/90 text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
+              onClick={() => onRotate(1)}
+              onKeyDown={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+              title="Rotate right"
+              type="button"
+            >
+              <RotateCw aria-hidden="true" size={16} strokeWidth={1.8} />
+            </button>
           </div>
-        )
+        </div>
       }
       caption={
         <p className="mt-1 text-sm text-slate-400">

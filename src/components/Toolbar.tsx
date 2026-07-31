@@ -1,5 +1,5 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { FolderOpen, Redo2, Undo2 } from "lucide-react";
+import { FolderOpen, Redo2, RotateCcw, RotateCw, Undo2 } from "lucide-react";
 import { useCallback } from "react";
 import { countLabel } from "../lib/format";
 import { shortcutHint } from "../lib/keyboard";
@@ -32,6 +32,7 @@ export function Toolbar() {
   const canUndo = usePlanStore((state) => state.canUndo);
   const canRedo = usePlanStore((state) => state.canRedo);
   const modalOpen = useUiStore((state) => state.modalOpen);
+  const selectedSlots = useUiStore((state) => state.selectedSlots);
   const { isMerging, progress, result, failure, start } = useMerge();
 
   const performUndo = useCallback(async () => {
@@ -47,6 +48,19 @@ export function Toolbar() {
       usePlanStore.getState().setSnapshot(await redo());
     } catch (error) {
       console.error("redo failed", error);
+    }
+  }, []);
+
+  const performRotate = useCallback(async (delta: number) => {
+    const slotIds = [...useUiStore.getState().selectedSlots];
+    if (slotIds.length === 0) {
+      return;
+    }
+
+    try {
+      await usePlanStore.getState().rotate(slotIds, delta);
+    } catch (error) {
+      console.error("rotate failed", error);
     }
   }, []);
 
@@ -96,6 +110,21 @@ export function Toolbar() {
           label="Redo"
           onClick={() => void performRedo()}
           shortcut={shortcutHint("redo", navigator.userAgent)}
+        />
+        <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-700" />
+        <ToolbarIconButton
+          disabled={selectedSlots.size === 0 || isMerging}
+          icon={RotateCcw}
+          label="Rotate left"
+          onClick={() => void performRotate(-1)}
+          shortcut={shortcutHint("rotate-left", navigator.userAgent)}
+        />
+        <ToolbarIconButton
+          disabled={selectedSlots.size === 0 || isMerging}
+          icon={RotateCw}
+          label="Rotate right"
+          onClick={() => void performRotate(1)}
+          shortcut={shortcutHint("rotate-right", navigator.userAgent)}
         />
         <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-700" />
         <ViewToggle />

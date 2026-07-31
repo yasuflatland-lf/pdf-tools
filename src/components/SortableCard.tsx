@@ -27,10 +27,18 @@ interface SortableCardProps {
   focused?: boolean;
   id: string;
   label: string;
+  rotation: number;
   selected?: boolean;
 }
 
-export function SortableCard({ children, focused, id, label, selected }: SortableCardProps) {
+export function SortableCard({
+  children,
+  focused,
+  id,
+  label,
+  rotation,
+  selected,
+}: SortableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     // The drag wrapper is the element the grid's listbox owns, so the option
@@ -70,7 +78,7 @@ export function SortableCard({ children, focused, id, label, selected }: Sortabl
       }}
       {...attributes}
       {...listeners}
-      aria-label={`Reorder ${label}`}
+      aria-label={`Reorder ${label}, rotation ${rotation * 90}° clockwise`}
       aria-selected={selected === true}
     >
       {children}

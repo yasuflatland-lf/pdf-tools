@@ -98,11 +98,15 @@ describe("shortcutHint", () => {
   it("uses the macOS glyphs on a Mac", () => {
     expect(shortcutHint("undo", mac)).toBe("⌘Z");
     expect(shortcutHint("redo", mac)).toBe("⇧⌘Z");
+    expect(shortcutHint("rotate-left", mac)).toBe("⌘[");
+    expect(shortcutHint("rotate-right", mac)).toBe("⌘]");
   });
 
   it("spells the modifier out on every other platform", () => {
     expect(shortcutHint("undo", windows)).toBe("Ctrl+Z");
     expect(shortcutHint("redo", windows)).toBe("Ctrl+Shift+Z");
+    expect(shortcutHint("rotate-left", windows)).toBe("Ctrl+[");
+    expect(shortcutHint("rotate-right", windows)).toBe("Ctrl+]");
   });
 
   it("falls back to the spelled-out modifier when the user agent is unknown", () => {

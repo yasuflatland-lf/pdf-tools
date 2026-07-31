@@ -229,6 +229,22 @@ describe("PageList", () => {
     expect(container.textContent).toContain("Thumbnail unavailable");
   });
 
+  it("renders a rotated thumbnail and announces its orientation", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0, rotation: 3 }],
+      sources: [source(10, "ungrouped", 1)],
+      can_undo: false,
+      can_redo: false,
+    });
+
+    const container = await renderList();
+
+    expect(container.querySelector("img")?.style.transform).toContain("rotate(270deg)");
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-label")).toContain(
+      "270° clockwise",
+    );
+  });
+
   it("does not label every row with a status that cannot be anything but ready", async () => {
     load(source(10, "grouped", 1), 1);
 

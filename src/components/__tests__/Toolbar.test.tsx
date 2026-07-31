@@ -249,6 +249,34 @@ describe("Toolbar", () => {
     expect(getButton(container, "Redo").disabled).toBe(true);
   });
 
+  it("enables rotation only while the selection is non-empty", async () => {
+    const container = await renderToolbar();
+
+    expect(getButton(container, "Rotate left").disabled).toBe(true);
+    expect(getButton(container, "Rotate right").disabled).toBe(true);
+
+    act(() => {
+      useUiStore.getState().selectSlots([1]);
+    });
+
+    expect(getButton(container, "Rotate left").disabled).toBe(false);
+    expect(getButton(container, "Rotate right").disabled).toBe(false);
+  });
+
+  it("rotates the current selection from the toolbar controls", async () => {
+    const rotate = vi.spyOn(usePlanStore.getState(), "rotate").mockResolvedValue();
+    useUiStore.getState().selectSlots([2, 4]);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Rotate left"));
+    await click(getButton(container, "Rotate right"));
+
+    expect(rotate.mock.calls).toEqual([
+      [[2, 4], -1],
+      [[2, 4], 1],
+    ]);
+  });
+
   it("stores the snapshot returned by Undo", async () => {
     usePlanStore.getState().setSnapshot({
       slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
@@ -566,6 +594,12 @@ describe("Toolbar", () => {
     expect(getButton(container, "Redo").getAttribute("title")).toBe(
       `Redo (${shortcutHint("redo", navigator.userAgent)})`,
     );
+    expect(getButton(container, "Rotate left").getAttribute("title")).toBe(
+      `Rotate left (${shortcutHint("rotate-left", navigator.userAgent)})`,
+    );
+    expect(getButton(container, "Rotate right").getAttribute("title")).toBe(
+      `Rotate right (${shortcutHint("rotate-right", navigator.userAgent)})`,
+    );
     expect(getButton(container, "Grid view").getAttribute("aria-label")).toBe("Grid view");
     expect(getButton(container, "List view").getAttribute("aria-label")).toBe("List view");
   });
@@ -578,6 +612,7 @@ describe("Toolbar", () => {
       can_undo: true,
       can_redo: true,
     });
+    useUiStore.getState().selectSlots([1]);
     mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
     mocks.compose.mockReturnValue(pending.promise);
     const container = await renderToolbar();
@@ -586,6 +621,8 @@ describe("Toolbar", () => {
 
     expect(getButton(container, "Undo").disabled).toBe(true);
     expect(getButton(container, "Redo").disabled).toBe(true);
+    expect(getButton(container, "Rotate left").disabled).toBe(true);
+    expect(getButton(container, "Rotate right").disabled).toBe(true);
     expect(getButton(container, "Merging…").disabled).toBe(true);
 
     await act(async () => {
@@ -594,6 +631,8 @@ describe("Toolbar", () => {
     });
 
     expect(getButton(container, "Undo").disabled).toBe(false);
+    expect(getButton(container, "Rotate left").disabled).toBe(false);
+    expect(getButton(container, "Rotate right").disabled).toBe(false);
     expect(getButton(container, "Merge").disabled).toBe(false);
   });
 });

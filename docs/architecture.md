@@ -9,11 +9,11 @@
 
 PDF Tools merges PDFs and images into one PDF. Its central abstraction is the **merge plan**: an
 ordered list of _slots_, where one slot is exactly one page of the output. Every user action —
-add, insert, reorder, delete, undo — is a pure function from one plan to the next.
+add, insert, reorder, rotate, delete, undo — is a pure function from one plan to the next.
 
 | Term                        | Meaning                                                                                 |
 | --------------------------- | --------------------------------------------------------------------------------------- |
-| `PageSlot`                  | One output page. Carries a `SlotId`, the source it came from, and a page index.         |
+| `PageSlot`                  | One output page. Carries its id, source, page index, and clockwise quarter-turn state.  |
 | `MergePlan`                 | The ordered `Vec<PageSlot>`. Vector order _is_ output page order.                       |
 | `SourceFile`                | One file the user added: a PDF or an image.                                             |
 | `MergeDocument`             | A `MergePlan` and its sources, with every slot guaranteed to name a listed source.      |
@@ -65,8 +65,8 @@ flowchart TB
 infrastructure → domain. Nothing flows back. Concretely:
 
 - **`domain` is pure.** No IO, no async, no external crates. It is `MergeDocument`, `MergePlan`,
-  `PageSlot`, `SourceFile`, `PageSize`, the three plan operations (`insert_at` / `remove` /
-  `reorder`), and the document's grouping and dominant-page-size queries. All of it is unit- and
+  `PageSlot`, `SourceFile`, `PageSize`, the plan operations (`insert_at` / `remove` / `reorder` /
+  `rotate`), and the document's grouping and dominant-page-size queries. All of it is unit- and
   property-testable with no fixtures.
 - **`application` owns the use cases and the ports.** `AddSources` probes new files and appends
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
@@ -111,11 +111,13 @@ implementation, and every application-layer test runs against it.
 One rule governs both directions, and it is evaluated only after an operation commits — never
 mid-drag:
 
-- **A source ungroups when an operation leaves its slots non-contiguous or no longer ascending.**
-  In the current UI, that operation is a drag (`reorder`).
+- **A source ungroups when an operation leaves its slots non-contiguous, no longer ascending, or
+  with mixed rotation.** A drag can break the first two conditions; rotating only part of a run
+  breaks the third.
 - **An ungrouped source regroups automatically once its slots are contiguous again _and_ their
-  page numbers strictly increase.** Deletion leaves gaps (1, 2, 4, 5) that stay ascending, so
-  those refold; a swap (1, 2, 7, 4, 5) does not. A source with two copies of the same page stays
+  page numbers strictly increase _and_ every slot has the same rotation.** Deletion leaves gaps
+  (1, 2, 4, 5) that stay ascending, so those refold; a swap (1, 2, 7, 4, 5) does not. Turning the
+  odd page back refolds a mixed-rotation run. A source with two copies of the same page stays
   ungrouped for as long as both copies remain in the plan. The ascent is strict rather than
   non-decreasing because a collapsed card's page count would otherwise misdescribe a run holding
   a page twice.
@@ -126,6 +128,8 @@ A collapsed card shows the number of pages actually present, not the original pa
 Folding a run into a card is derived in the frontend by `groupContiguous`
 (`src/lib/grouping.ts`) from the snapshot the backend produced. Rust derives the grouped/ungrouped
 decision from the plan on demand with `can_regroup` and ships that projection in the snapshot.
+The frontend repeats the same-rotation condition because one collapsed thumbnail can truthfully
+represent only a run whose pages share an orientation.
 
 ## Immutability and undo
 
@@ -133,6 +137,7 @@ decision from the plan on demand with `can_regroup` and ships that projection in
 pub fn insert_at(plan: &MergePlan, at: usize, slots: &[PageSlot]) -> MergePlan
 pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
 pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
+pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan
 ```
 
 Every operation returns a new plan. `PlanSession` pairs that plan with its sources in a
@@ -154,9 +159,10 @@ The dividing question is "must undo restore it?". If yes, it lives in Rust or is
 canonical Rust state. Grouping needs no stored flag: undo restores the plan, which restores
 everything derived from that plan, including the grouping decision shipped to the frontend.
 
-This is why `plan-store.ts` exposes `setSnapshot` and nothing else: **every command returns a whole
-`PlanSnapshot` and the store only ever replaces its contents.** A local `reorder` helper on the
-frontend would be a second, divergent implementation of the merge rules.
+This is why `plan-store.ts` replaces its contents only from whole `PlanSnapshot` values. Its
+`rotate` action delegates to Rust and installs the returned snapshot; it does not rotate a local
+copy. A local implementation of `rotate` or `reorder` would be a second, divergent copy of the
+merge rules.
 
 The only persisted state is user preference, held in `localStorage`: the last output directory
 (falling back to the OS Downloads directory) and the grid/list choice. No document state is ever
@@ -184,16 +190,20 @@ Every plan command returns a fresh `PlanSnapshot`.
 | `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
 | `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
 | `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
-| `rotate_slots(slot_ids, delta)`  | Turn surviving slots by clockwise quarter turns, then re-evaluate regrouping    |
+| `rotate_slots(slot_ids, delta)`  | Turn surviving slots clockwise modulo four, then re-evaluate regrouping         |
 | `undo()` / `redo()`              | Move along the plan stack                                                       |
 | `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
 | `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                    |
 
 Two shapes are deliberate:
 
+- **Plan mutations return the whole canonical snapshot.** Unknown slot ids are ignored, and an
+  empty or otherwise unchanged rotation does not add an undo entry.
 - **Thumbnails cross the IPC boundary as raw PNG bytes** in a `tauri::ipc::Response`, never as
   base64 or a JSON number array. The frontend wraps them in blob URLs held by an LRU cache
-  (`src/lib/thumbnail-cache.ts`) that revokes each URL on eviction.
+  (`src/lib/thumbnail-cache.ts`) that revokes each URL on eviction. Rotation is a CSS transform
+  over those bytes: the cache key remains `slotId:width`, and the fitting scale keeps an odd
+  quarter turn inside the virtualized card's unchanged frame without another rasterization call.
 - **`compose` runs on `spawn_blocking`, and clones the plan and sources out of the session before
   it starts.** The lock is released before the engine runs, so a long merge never blocks the
   commands the UI issues meanwhile, and the merge cannot mutate the plan underneath the user.
@@ -206,11 +216,18 @@ breaks the TypeScript build rather than failing silently at runtime.
 
 ## Image pages
 
-An image page is fitted to the **dominant page size**: the most frequent size among the plan's
-PDF-backed slots, ties broken by first appearance in the plan, A4 portrait when the plan has no
-PDF pages at all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice,
-so the classification is independent of the order pages were added in. The aspect ratio is
-preserved and the remaining area is white. An animated GIF contributes its first frame only.
+An image page is fitted to the **dominant page size**: the most frequent effective size among the
+plan's PDF-backed slots, after each slot's rotation exchanges its axes when necessary. Ties are
+broken by first appearance in the plan, with A4 portrait used when the plan has no PDF pages at
+all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice, so the
+classification is independent of the order pages were added in.
+
+The image keeps its aspect ratio and the remaining sheet area is white. Its own rotation does not
+change `fit_to`: composition creates the sheet at the dominant size, places the image through the
+normal path, and then writes the rotation as the PDF page attribute. JPEG passthrough therefore
+remains untouched, and image-backed and PDF-backed slots follow the same turned-sheet rule. For a
+copied PDF page, the slot rotation is added to any rotation already declared by the source. An
+animated GIF contributes its first frame only.
 
 ## Error handling
 

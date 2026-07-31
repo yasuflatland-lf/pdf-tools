@@ -124,6 +124,21 @@ async function pressArrow(key: string): Promise<void> {
   });
 }
 
+function pointerEvent(type: string, clientX: number, clientY: number): MouseEvent {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    button: 0,
+    cancelable: true,
+    clientX,
+    clientY,
+  });
+  Object.defineProperties(event, {
+    isPrimary: { value: true },
+    pointerId: { value: 1 },
+  });
+  return event;
+}
+
 function stopMeasuringElements(): void {
   for (const [name, descriptor] of measuredProperties) {
     if (descriptor) {
@@ -274,6 +289,26 @@ describe("PageGrid", () => {
     // dnd-kit's keyboard sensor listens on the sortable wrapper; letting the
     // key through would pick the card up instead of toggling the group.
     expect(sortable?.style.opacity).toBe("1");
+  });
+
+  it("keeps a pointer press on a rotate control away from the drag sensor", async () => {
+    load(source(10, "ungrouped", 1), 1);
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+    const sortable = rotate?.closest<HTMLElement>('[aria-roledescription="sortable"]');
+    layOutSortableCards(container);
+
+    await act(async () => {
+      rotate?.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      await Promise.resolve();
+    });
+
+    expect(sortable?.style.opacity).toBe("1");
+
+    act(() => {
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+    });
   });
 
   it("renders no expand or collapse control for an ungrouped source", async () => {
@@ -470,6 +505,35 @@ describe("PageGrid", () => {
 
     expect(invoke).toHaveBeenCalledWith("rasterize_slot", expect.objectContaining({ slotId: 1 }));
     expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:thumbnail");
+  });
+
+  it("rotates a card thumbnail immediately without rasterizing it again", async () => {
+    const rotated: PlanSnapshot = {
+      slots: [{ id: 1, source: 10, page: 0, rotation: 1 }],
+      sources: [source(10, "ungrouped", 1)],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "rotate_slots" ? rotated : new Uint8Array([1, 2, 3])),
+    );
+    load(source(10, "ungrouped", 1), 1);
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLButtonElement>('[aria-label="Rotate right 10.pdf"]');
+
+    await act(async () => {
+      rotate?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(invoke.mock.calls.filter((call) => call[0] === "rotate_slots")).toEqual([
+      ["rotate_slots", { slotIds: [1], delta: 1 }],
+    ]);
+    expect(container.querySelector("img")?.style.transform).toContain("rotate(90deg)");
+    expect(invoke.mock.calls.filter((call) => call[0] === "rasterize_slot")).toHaveLength(1);
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-label")).toContain(
+      "90° clockwise",
+    );
   });
 
   it("sends exactly one reorder command when a card is dropped on another", async () => {

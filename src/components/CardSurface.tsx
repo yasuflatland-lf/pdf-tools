@@ -82,6 +82,7 @@ export function CardSurface({
                           key={card.key}
                           id={card.key}
                           label={card.fileName}
+                          rotation={card.slot.rotation}
                           focused={focusedIndex === cardIndex}
                           selected={selected}
                         >
