@@ -16,6 +16,7 @@ add, insert, reorder, delete, undo — is a pure function from one plan to the n
 | `PageSlot`                  | One output page. Carries a `SlotId`, the source it came from, and a page index.         |
 | `MergePlan`                 | The ordered `Vec<PageSlot>`. Vector order _is_ output page order.                       |
 | `SourceFile`                | One file the user added: a PDF or an image.                                             |
+| `MergeDocument`             | A `MergePlan` and its sources, with every slot guaranteed to name a listed source.      |
 | Group                       | A contiguous run of slots from one source, drawn as a single card.                      |
 | probe / rasterize / compose | The three PDF engine operations: read metadata / render a page / write the merged file. |
 
@@ -41,7 +42,7 @@ flowchart TB
         ports["Ports:<br>PdfEngine, ImageDecoder"]
     end
     subgraph domain["domain / crates/core"]
-        model["MergePlan, PageSlot,<br>SourceFile, PageSize"]
+        model["MergeDocument, MergePlan,<br>PageSlot, SourceFile, PageSize"]
         ops["Pure operations<br>+ grouping rules"]
     end
     subgraph infra["infrastructure / crates/core"]
@@ -62,13 +63,13 @@ flowchart TB
 **Dependencies flow in one direction only:** presentation → application → domain, and
 infrastructure → domain. Nothing flows back. Concretely:
 
-- **`domain` is pure.** No IO, no async, no external crates. It is `MergePlan`, `PageSlot`,
-  `SourceFile`, `PageSize`, the three plan operations (`insert_at` / `remove` / `reorder`), the
-  grouping rules, and `dominant_page_size`. All of it is unit- and property-testable with no
-  fixtures.
+- **`domain` is pure.** No IO, no async, no external crates. It is `MergeDocument`, `MergePlan`,
+  `PageSlot`, `SourceFile`, `PageSize`, the three plan operations (`insert_at` / `remove` /
+  `reorder`), and the document's grouping and dominant-page-size queries. All of it is unit- and
+  property-testable with no fixtures.
 - **`application` owns the use cases and the ports.** `AddSources` probes new files and appends
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
-  holds the current plan, the source list, and the undo/redo stacks.
+  holds the current document and its undo/redo stacks.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
   `ImageCrateDecoder` (the `image` crate), a PNG encoder, and `FakePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
@@ -130,7 +131,8 @@ pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
 pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
 ```
 
-Every operation returns a new plan, so undo/redo is nothing but a stack of plans in `PlanSession`.
+Every operation returns a new plan. `PlanSession` pairs that plan with its sources in a
+`MergeDocument`, so undo/redo is nothing but stacks of documents.
 A `PageSlot` is 24 bytes (two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan
 costs ~24 KB per stack entry — cheap enough that no diffing scheme is warranted.
 
@@ -138,7 +140,7 @@ costs ~24 KB per stack entry — cheap enough that no diffing scheme is warrante
 
 | Kind                     | Home                       | Contents                                                                                              |
 | ------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Canonical document state | **Rust (`crates/core`)**   | `MergePlan`, undo/redo stacks, the `SourceFile` list                                                  |
+| Canonical document state | **Rust (`crates/core`)**   | `MergeDocument` plus undo/redo stacks                                                                 |
 | Derived document data    | **Rust → snapshot**        | Each source's grouped/ungrouped decision, computed from `MergePlan` by `can_regroup`                  |
 | Transient view state     | **Zustand (`src/store/`)** | expanded/collapsed cards, selection, focus, grid vs list, drag preview position, thumbnail blob cache |
 
