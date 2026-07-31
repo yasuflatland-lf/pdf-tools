@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "fmt": "oxfmt --check",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "knip": "knip",
     "tauri": "tauri"
   },
@@ -32,6 +33,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "jsdom": "^30.0.1",
     "knip": "^6.29.0",
     "oxfmt": "^0.61.0",
