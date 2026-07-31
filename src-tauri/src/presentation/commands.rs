@@ -64,6 +64,27 @@ pub fn remove_slots(
     remove_slots_inner(&state, slot_ids)
 }
 
+pub fn rotate_slots_inner(
+    state: &AppState,
+    slot_ids: Vec<u64>,
+    delta: i32,
+) -> Result<PlanSnapshot, String> {
+    let slot_ids = slot_ids.into_iter().map(SlotId).collect::<Vec<_>>();
+    let delta = delta.rem_euclid(4) as i8;
+    let mut session = state.session();
+    session.rotate(&slot_ids, delta);
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn rotate_slots(
+    state: State<'_, AppState>,
+    slot_ids: Vec<u64>,
+    delta: i32,
+) -> Result<PlanSnapshot, String> {
+    rotate_slots_inner(&state, slot_ids, delta)
+}
+
 pub fn undo_inner(state: &AppState) -> Result<PlanSnapshot, String> {
     let mut session = state.session();
     // Empty history is a successful no-op; the unchanged snapshot is returned.

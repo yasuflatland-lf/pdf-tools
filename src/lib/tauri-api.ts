@@ -24,6 +24,10 @@ export async function removeSlots(slotIds: number[]): Promise<PlanSnapshot> {
   return invoke<PlanSnapshot>("remove_slots", { slotIds });
 }
 
+export async function rotateSlots(slotIds: number[], delta: number): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("rotate_slots", { slotIds, delta });
+}
+
 export async function undo(): Promise<PlanSnapshot> {
   return invoke<PlanSnapshot>("undo");
 }

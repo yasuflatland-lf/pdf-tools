@@ -3,4 +3,4 @@
 /**
  * One page of one source at one position in the plan.
  */
-export type PageSlotDto = { id: number, source: number, page: number, };
+export type PageSlotDto = { id: number, source: number, page: number, rotation: number, };

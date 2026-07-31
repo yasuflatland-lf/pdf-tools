@@ -14,7 +14,7 @@ describe("tauri-api", () => {
   it("returns the snapshot produced by the add_sources command", async () => {
     const paths = ["/documents/first.pdf", "/images/page.png"];
     const snapshot: PlanSnapshot = {
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: false,
       can_redo: false,

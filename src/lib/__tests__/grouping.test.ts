@@ -4,7 +4,7 @@ import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { groupContiguous } from "../grouping";
 
 function slot(id: number, sourceId: number, page: number): PageSlotDto {
-  return { id, source: sourceId, page };
+  return { id, source: sourceId, page, rotation: 0 };
 }
 
 function source(id: number, grouping: SourceFileDto["grouping"]): SourceFileDto {

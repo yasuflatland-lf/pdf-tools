@@ -33,6 +33,7 @@ function slots(sourceId: number, pageCount: number): PageSlotDto[] {
     id: page + 1,
     source: sourceId,
     page,
+    rotation: 0,
   }));
 }
 
@@ -474,9 +475,9 @@ describe("PageGrid", () => {
   it("sends exactly one reorder command when a card is dropped on another", async () => {
     const reordered: PlanSnapshot = {
       slots: [
-        { id: 2, source: 10, page: 1 },
-        { id: 1, source: 10, page: 0 },
-        { id: 3, source: 10, page: 2 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 3, source: 10, page: 2, rotation: 0 },
       ],
       sources: [source(10, "ungrouped", 3)],
       can_undo: true,

@@ -184,6 +184,7 @@ Every plan command returns a fresh `PlanSnapshot`.
 | `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
 | `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
 | `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
+| `rotate_slots(slot_ids, delta)`  | Turn surviving slots by clockwise quarter turns, then re-evaluate regrouping    |
 | `undo()` / `redo()`              | Move along the plan stack                                                       |
 | `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
 | `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                    |

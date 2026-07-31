@@ -12,7 +12,7 @@ use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
     add_sources_inner, compose_inner, rasterize_slot_inner, redo_inner, remove_slots_inner,
-    reorder_inner, undo_inner,
+    reorder_inner, rotate_slots_inner, undo_inner,
 };
 use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
@@ -241,6 +241,31 @@ fn reorder_returns_a_snapshot_in_the_new_order() {
     let state = state_with_pdf(3);
     let snapshot = reorder_inner(&state, 0, 1, 2).unwrap();
     assert_eq!(snapshot.slots[2].page, 0);
+}
+
+#[test]
+fn rotate_slots_returns_a_snapshot_carrying_the_new_rotation() {
+    let state = state_with_pdf(2);
+    let slot_id = snapshot_of(&state).slots[0].id;
+
+    let snapshot = rotate_slots_inner(&state, vec![slot_id, u64::MAX], 5).unwrap();
+
+    assert_eq!(snapshot.slots[0].rotation, 1);
+    assert_eq!(snapshot.slots[1].rotation, 0);
+}
+
+#[test]
+fn a_no_op_rotation_leaves_can_undo_unchanged() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new()),
+        Arc::new(FakeImageDecoder::new()),
+    );
+    let before = snapshot_of(&state);
+
+    let snapshot = rotate_slots_inner(&state, vec![u64::MAX], 1).unwrap();
+
+    assert_eq!(snapshot.can_undo, before.can_undo);
+    assert!(!snapshot.can_undo);
 }
 
 #[test]

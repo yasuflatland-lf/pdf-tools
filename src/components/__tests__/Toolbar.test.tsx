@@ -93,7 +93,7 @@ function getButton(container: HTMLElement, name: string): HTMLButtonElement {
 
 function loadOneSlot(): void {
   usePlanStore.getState().setSnapshot({
-    slots: [{ id: 1, source: 10, page: 0 }],
+    slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
     sources: [],
     can_undo: false,
     can_redo: false,
@@ -251,13 +251,13 @@ describe("Toolbar", () => {
 
   it("stores the snapshot returned by Undo", async () => {
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
     });
     mocks.undo.mockResolvedValue({
-      slots: [{ id: 2, source: 20, page: 0 }],
+      slots: [{ id: 2, source: 20, page: 0, rotation: 0 }],
       sources: [],
       can_undo: false,
       can_redo: true,
@@ -267,13 +267,13 @@ describe("Toolbar", () => {
     await click(getButton(container, "Undo"));
 
     expect(mocks.undo).toHaveBeenCalledOnce();
-    expect(usePlanStore.getState().slots).toEqual([{ id: 2, source: 20, page: 0 }]);
+    expect(usePlanStore.getState().slots).toEqual([{ id: 2, source: 20, page: 0, rotation: 0 }]);
     expect(usePlanStore.getState().canRedo).toBe(true);
   });
 
   it("stores the snapshot returned by the Ctrl+Z shortcut", async () => {
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
@@ -319,7 +319,7 @@ describe("Toolbar", () => {
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: true, can_redo: false });
     mocks.redo.mockResolvedValue({
-      slots: [{ id: 3, source: 10, page: 2 }],
+      slots: [{ id: 3, source: 10, page: 2, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
@@ -347,13 +347,13 @@ describe("Toolbar", () => {
     });
 
     expect(mocks.redo).toHaveBeenCalledOnce();
-    expect(usePlanStore.getState().slots).toEqual([{ id: 3, source: 10, page: 2 }]);
+    expect(usePlanStore.getState().slots).toEqual([{ id: 3, source: 10, page: 2, rotation: 0 }]);
   });
 
   it("logs a failed undo and leaves the plan untouched", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
@@ -364,7 +364,7 @@ describe("Toolbar", () => {
     await click(getButton(container, "Undo"));
 
     expect(consoleError).toHaveBeenCalledWith("undo failed", expect.any(Error));
-    expect(usePlanStore.getState().slots).toEqual([{ id: 1, source: 10, page: 0 }]);
+    expect(usePlanStore.getState().slots).toEqual([{ id: 1, source: 10, page: 0, rotation: 0 }]);
     consoleError.mockRestore();
   });
 
@@ -455,7 +455,7 @@ describe("Toolbar", () => {
   it("names the failing file in a dialog and keeps the marker after it is closed", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [
         {
           id: 10,
@@ -573,7 +573,7 @@ describe("Toolbar", () => {
   it("locks the history buttons and renames the primary button while merging", async () => {
     const pending = deferred<MergeReportDto>();
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: true,

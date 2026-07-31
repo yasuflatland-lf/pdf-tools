@@ -32,6 +32,7 @@ function loadCards(count: number): void {
     id: page + 1,
     source: source.id,
     page,
+    rotation: 0,
   }));
 
   usePlanStore.getState().setSnapshot({
