@@ -5,6 +5,7 @@ use fixtures::{engine, fixture};
 use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, PdfEngine};
 use pdf_tools_core::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
+use pdfium_render::prelude::{PdfPageObjectCommon, PdfPageObjectsCommon};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -47,6 +48,167 @@ fn is_white(pixel: &[u8]) -> bool {
 fn center_pixel(image: &RasterImage) -> &[u8] {
     let offset = (((image.height / 2) * image.width + image.width / 2) * 4) as usize;
     &image.rgba[offset..offset + 4]
+}
+
+/// Reports the filter chain PDFium wrote for the first image object on page 0.
+/// Reading it back from the saved file is the only way to tell an embedded
+/// stream from a re-encoded bitmap; the compose call itself succeeds either way.
+fn image_filters(path: &std::path::Path) -> Vec<String> {
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(path, None).unwrap();
+        let pages = document.pages();
+        let page = pages.get(0).unwrap();
+        let filters = page
+            .objects()
+            .iter()
+            .find_map(|object| {
+                object.as_image_object().map(|image| {
+                    image
+                        .filters()
+                        .iter()
+                        .map(|f| f.name().to_owned())
+                        .collect()
+                })
+            })
+            .expect("the composed page should hold an image object");
+        filters
+    })
+}
+
+/// The pixel dimensions PDFium recorded for the first embedded image on page 0.
+fn image_pixels(path: &std::path::Path) -> (i32, i32) {
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(path, None).unwrap();
+        let pages = document.pages();
+        let page = pages.get(0).unwrap();
+        page.objects()
+            .iter()
+            .find_map(|object| {
+                object
+                    .as_image_object()
+                    .map(|image| (image.width().unwrap(), image.height().unwrap()))
+            })
+            .expect("the composed page should hold an image object")
+    })
+}
+
+#[test]
+fn an_image_denser_than_the_cap_is_embedded_at_the_cap() {
+    // sample.png is 400x400. Fitted onto a one-inch square page it occupies
+    // 72x72 pt, which at 200 DPI is 200x200 px -- half its pixel width.
+    let out = temp_path("capped.pdf");
+    let plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: fixture("sample.png"),
+            fit_to: PageSize {
+                width_pt: 72.0,
+                height_pt: 72.0,
+            },
+        }],
+    };
+    engine().compose(&plan, &out).unwrap();
+
+    let (width, height) = image_pixels(&out);
+    assert_eq!((width, height), (200, 200));
+}
+
+#[test]
+fn an_image_already_under_the_cap_is_embedded_untouched() {
+    // The same 400x400 file on A4 occupies 595 pt, whose 200 DPI budget is
+    // 1654 px. Nothing that was lossless may become lossy.
+    let out = temp_path("uncapped.pdf");
+    engine().compose(&image_plan("sample.png"), &out).unwrap();
+
+    let (width, height) = image_pixels(&out);
+    assert_eq!((width, height), (400, 400));
+}
+
+#[test]
+fn a_passthrough_jpeg_is_never_downscaled() {
+    // Passthrough costs nothing regardless of resolution, and capping it would
+    // force a lossy decode and re-encode to achieve nothing.
+    let out = temp_path("uncapped-jpeg.pdf");
+    let plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: fixture("sample.jpg"),
+            fit_to: PageSize {
+                width_pt: 72.0,
+                height_pt: 72.0,
+            },
+        }],
+    };
+    engine().compose(&plan, &out).unwrap();
+
+    let (width, height) = image_pixels(&out);
+    assert_eq!((width, height), (800, 600));
+}
+
+#[test]
+fn a_baseline_jpeg_is_embedded_as_its_original_stream() {
+    let out = temp_path("baseline-passthrough.pdf");
+    engine().compose(&image_plan("sample.jpg"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn a_progressive_jpeg_is_embedded_as_its_original_stream() {
+    let out = temp_path("progressive-passthrough.pdf");
+    engine()
+        .compose(&image_plan("progressive.jpg"), &out)
+        .unwrap();
+    assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn a_cmyk_jpeg_is_decoded_rather_than_embedded() {
+    // PDFium accepts a four-component stream and renders it with the wrong
+    // colours, so this one must not take the passthrough path.
+    let out = temp_path("cmyk-fallback.pdf");
+    engine().compose(&image_plan("cmyk.jpg"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["FlateDecode".to_owned()]);
+}
+
+#[test]
+fn a_png_is_decoded_rather_than_embedded() {
+    let out = temp_path("png-fallback.pdf");
+    engine().compose(&image_plan("sample.png"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["FlateDecode".to_owned()]);
+}
+
+#[test]
+fn an_embedded_stream_lands_where_a_decoded_one_would() {
+    // A passthrough page that is scaled or positioned differently from the
+    // raster page would be a silent regression: it still merges, still opens,
+    // and still reports the right page count.
+    let passthrough = temp_path("bounds-jpeg.pdf");
+    let raster = temp_path("bounds-png.pdf");
+    engine()
+        .compose(&image_plan("sample.jpg"), &passthrough)
+        .unwrap();
+    engine()
+        .compose(&image_plan("sample.png"), &raster)
+        .unwrap();
+
+    let bounds = |path: &std::path::Path| {
+        engine().with_library(|pdfium| {
+            let document = pdfium.load_pdf_from_file(path, None).unwrap();
+            let pages = document.pages();
+            let page = pages.get(0).unwrap();
+            let rect = page
+                .objects()
+                .iter()
+                .find_map(|object| object.as_image_object().map(|i| i.bounds().unwrap()))
+                .unwrap();
+            (rect.left().value, rect.right().value)
+        })
+    };
+
+    // sample.jpg is 800x600 and sample.png is 400x400; both are wider than tall
+    // or square, so both fit to the full page width on A4 portrait.
+    let (jpeg_left, jpeg_right) = bounds(&passthrough);
+    let (png_left, png_right) = bounds(&raster);
+    assert!((jpeg_left - png_left).abs() < 0.5);
+    assert!((jpeg_right - png_right).abs() < 0.5);
 }
 
 #[test]

@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Post-0.1.0 fixes. Every measured figure below comes from issue #68
+([the objective-scale run](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137691880)
+and [the worst-case run](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137808149));
+nothing here is estimated.
+
+### Merging
+
+- Eligible one- and three-component JPEGs are embedded as their original `DCTDecode` stream.
+  Other images are decoded and capped at 200 DPI for their occupied page area; four-component
+  JPEGs are deliberately excluded from passthrough because PDFium renders their colours
+  incorrectly.
+- On an Apple M5 Pro running macOS 26.5.2, a `--release` build with PDFium `chromium/7961` merged
+  100 synthetic 2048×1536 JPEGs by passthrough in 0.21 s (203.7 MB input and output). At the
+  scale the 10 s objective names, the capped raster path merged 100 photo-like pages of the same
+  dimensions in 7.48 s (43.8 MB in, 111.7 MB out). **Both paths now meet the objective.**
+- The 200 DPI cap bounds the worst case rather than the common one. On a deliberately noisy
+  900.2 MB PNG corpus — nine times the objective's size — it cut the measured result from 13.23 s
+  and 858.7 MB to 11.63 s and 543.0 MB. That corpus stays above 10 s: what is left there is PNG
+  decode rather than embedding, and no cap can reduce it.
+
+### Reliability
+
+- A poisoned plan-session lock is recovered from rather than propagated, and that choice is now
+  deliberate: the recovery is documented on the accessor, logged at warn level, and pinned by a
+  regression test. Propagating it would have cost the user the whole document to a forced
+  restart.
+
+### Keyboard and selection
+
+- The merge-failure dialog owns the keyboard while it is open, and the list view now matches the
+  grid's arrow-key focus and selection behaviour.
+
+### Thumbnails
+
+- The grid and list share the same thumbnail effect, and a failed thumbnail is visibly marked.
+
 ## [0.1.0] — 2026-07-31
 
 First release. The version is set to `0.1.0` across `Cargo.toml` (both crates), `package.json` and
@@ -84,9 +122,11 @@ single byte leaving the machine.
 ### Known limitations
 
 - **Merging images is slower than the 10 s objective.** 100 JPEGs at 2048×1536 (93.8 MB) take
-  13.1–13.6 s and produce an 858.9 MB file, because images are embedded as uncompressed bitmaps.
-  Merging PDF pages alone is effectively free (100 pages in 0.001 s). Passing the original JPEG
-  stream through, or compressing on embed, is the fix.
+  13.1–13.6 s and produce an 858.9 MB file, because every image is decoded and re-embedded as a
+  raw bitmap, which PDFium filters with `FlateDecode` when it saves — deflating photographic
+  pixels is slow and barely compresses them. Merging PDF pages alone is effectively free (100
+  pages in 0.001 s). Passing the original JPEG stream through, or embedding fewer pixels, is the
+  fix.
 - **The progress bar does not advance page by page.** Every progress tick is emitted before the
   merge engine starts, so the bar reaches 100% at once and the window then waits without further
   feedback — most visible on the slow image path above.

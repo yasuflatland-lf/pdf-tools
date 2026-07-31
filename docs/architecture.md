@@ -152,6 +152,19 @@ The only persisted state is user preference, held in `localStorage`: the last ou
 (falling back to the OS Downloads directory) and the grid/list choice. No document state is ever
 written to disk.
 
+### Poisoned session locks
+
+`AppState::session()` deliberately recovers a poisoned plan-session lock instead of propagating
+the poisoning. `PlanSession` mutations install replacement values as a whole, so a command that
+panics cannot expose a half-updated document. Propagating the poisoning would instead force a
+restart and lose the user's document, trading that unrecoverable outcome against a hypothetical
+inconsistent state. The recovery decision is documented on the accessor itself, so it cannot be
+mistaken for an oversight and quietly "fixed" into a propagation.
+
+Making that recovery observable — a `tracing::warn!` on the recovery path, and a regression test
+pinning that a panic while the session is locked does not lose the document — lands with
+[issue #69](https://github.com/yasuflatland-lf/pdf-tools/issues/69) in the same post-0.1.0 batch.
+
 ## Command surface and IPC
 
 Every plan command returns a fresh `PlanSnapshot`.
@@ -223,16 +236,16 @@ a measurement.**
 Measurement environment: Apple Silicon / macOS, Rust 1.97.1, `--release` for Rust figures,
 jsdom + Vitest for frontend figures.
 
-| Objective                                        | Target             | Status                                                                   | Measured                                                                                                                                                                      |
-| ------------------------------------------------ | ------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cold start                                       | ≤ 2 s (p95)        | **Not measured** — needs a GUI session                                   | —                                                                                                                                                                             |
-| 20 files added → all cards shown                 | ≤ 3 s (probe only) | **Not measured** end to end; the JS-side portion is measured (see below) | —                                                                                                                                                                             |
-| Thumbnail shown (visible range)                  | ≤ 300 ms (p95)     | **Not measured** — needs real PDFium rasterization in a WebView          | —                                                                                                                                                                             |
-| Reorder: drop → screen update                    | ≤ 100 ms (p95)     | **Met, measured**                                                        | ≈ 1 ms typical, ≈ 3 ms p95 at 1000 slots — two orders of magnitude under target ([issue #21](https://github.com/yasuflatland-lf/pdf-tools/issues/21#issuecomment-5134952236)) |
-| Merge 100 pages / ~100 MB                        | ≤ 10 s             | **Not met, measured**                                                    | 13.1–13.6 s for 100 JPEGs / 93.8 MB. 100 PDF pages alone: 0.001 s ([issue #28](https://github.com/yasuflatland-lf/pdf-tools/issues/28#issuecomment-5134973783))               |
-| Peak memory, normal scale                        | ≤ 500 MB           | **Not measured** — needs process-level measurement of the real app       | —                                                                                                                                                                             |
-| 1000 pages: scroll at 60 fps, peak memory ≤ 1 GB | —                  | **Not measured** — needs a GUI session                                   | —                                                                                                                                                                             |
-| Crashes over a 100-document PDF corpus           | 0                  | **Not measured** — no corpus run has been performed                      | —                                                                                                                                                                             |
+| Objective                                        | Target             | Status                                                                   | Measured                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------ | ------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cold start                                       | ≤ 2 s (p95)        | **Not measured** — needs a GUI session                                   | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 20 files added → all cards shown                 | ≤ 3 s (probe only) | **Not measured** end to end; the JS-side portion is measured (see below) | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Thumbnail shown (visible range)                  | ≤ 300 ms (p95)     | **Not measured** — needs real PDFium rasterization in a WebView          | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Reorder: drop → screen update                    | ≤ 100 ms (p95)     | **Met, measured**                                                        | ≈ 1 ms typical, ≈ 3 ms p95 at 1000 slots — two orders of magnitude under target ([issue #21](https://github.com/yasuflatland-lf/pdf-tools/issues/21#issuecomment-5134952236))                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Merge 100 pages / ~100 MB                        | ≤ 10 s             | **Met at the stated scale on both paths — measured**                     | JPEG passthrough: 0.21 s / 100 pages / 203.7 MB. Raster at the objective's scale: 7.48 s for 100 photo-like pages, 43.8 MB in and 111.7 MB out ([issue #68](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137691880)). A 900.2 MB noisy-PNG corpus — nine times the objective's size — takes 11.63 s ([issue #68](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137808149)). Apple M5 Pro, macOS 26.5.2, `--release`. 100 PDF pages alone: 0.001 s ([issue #28](https://github.com/yasuflatland-lf/pdf-tools/issues/28#issuecomment-5134973783)) |
+| Peak memory, normal scale                        | ≤ 500 MB           | **Not measured** — needs process-level measurement of the real app       | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 1000 pages: scroll at 60 fps, peak memory ≤ 1 GB | —                  | **Not measured** — needs a GUI session                                   | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Crashes over a 100-document PDF corpus           | 0                  | **Not measured** — no corpus run has been performed                      | —                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ### What was measured, and where
 
@@ -267,21 +280,60 @@ Virtualization was verified separately: with an 800×600 viewport, a 200-page pl
 `rasterize_slot` calls (4 columns × 2 rows) and never requests the tail. The count is constant in
 plan length, so 1000 pages issues the same 8.
 
-**Merge throughput** ([issue #28](https://github.com/yasuflatland-lf/pdf-tools/issues/28#issuecomment-5134973783)) —
-a headless harness driving the real `PdfiumEngine` and the `Compose` use case, PDFium
-`FPDF API V7881`:
+**Merge throughput** ([issue #68](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137808149)) —
+measured on an Apple M5 Pro running macOS 26.5.2, with a `--release` build and PDFium
+`chromium/7961`. The corpus contains 100 synthetic images at 2048×1536. Each is composed onto
+`PageSize::A4_PORTRAIT` in a 595×446 pt frame, whose 200 DPI budget is 1652×1239 px, or 65% of
+the source pixel count:
 
-| Input                         | Output              | Time                        |
-| ----------------------------- | ------------------- | --------------------------- |
-| 100 JPEGs, 2048×1536, 93.8 MB | 100 pages, 858.9 MB | 13.1 / 13.4 / 13.5 / 13.6 s |
-| 100-page PDF, 45.5 kB         | 100 pages, 45.5 kB  | 0.001 s                     |
+| Path                          | Input    | Time    | Output   | Filter      |
+| ----------------------------- | -------- | ------- | -------- | ----------- |
+| JPEG passthrough              | 203.7 MB | 0.21 s  | 203.7 MB | DCTDecode   |
+| PNG raster, uncapped          | 900.2 MB | 13.23 s | 858.7 MB | FlateDecode |
+| PNG raster, capped at 200 DPI | 900.2 MB | 11.63 s | 543.0 MB | FlateDecode |
 
-Copying PDF pages is free; the entire cost is image embedding. Output inflating ~9× (≈ 8.6 MB per
-page against 2048 × 1536 × 3 B ≈ 9.4 MB) shows images are embedded as **uncompressed bitmaps** in
-`infrastructure/pdfium/compose.rs`. Quadrupling input bytes only multiplies time by ~1.3, which
-confirms pixel count — not file size — dominates. Meeting the 10 s target requires passing the
-original JPEG stream through, or applying DCTDecode/FlateDecode on embed. **This is a known
-v0.1.0 limitation, not a resolved item.**
+The synthetic corpus has more per-pixel noise than a photograph, so its PNG inputs (9.0 MB each)
+and JPEG inputs (2.0 MB each) are larger than typical camera output. Passthrough has no size win
+over its own input by construction: it copies the original stream verbatim.
+
+That noise is why the table above is a worst case rather than the objective's case. **The
+objective names 100 pages of about 100 MB, and this corpus is 900.2 MB — nine times that.** The
+same code was also measured on 100 photo-like pages of the same 2048×1536 dimensions, whose PNG
+sources are 438 kB each rather than 9.0 MB
+([issue #68](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137691880)):
+
+| Path              | Input   | Time    | Output    |
+| ----------------- | ------- | ------- | --------- |
+| JPEG passthrough  | 19.1 MB | 80.3 ms | 18.3 MiB  |
+| PNG raster capped | 43.8 MB | 7.48 s  | 111.7 MiB |
+
+That run predates the pinned `chromium/7961` binary — it was taken on `FPDF API V7881` — so its
+absolute figure is not directly comparable with the table above. It is the run that sits inside
+the objective's size envelope, and there the raster path is under 10 s.
+
+PDFium filters a bitmap-embedded image with `FlateDecode` at save time. The cap removes 36.8% of
+the raster output size and 12.1% of its wall-clock time. The time saving is proportionally
+smaller because decoding 900 MB of PNG is unaffected by the cap; only the save-time deflate has
+fewer pixels to process. A separate design measurement on PDFium `FPDF API V7881` isolated that
+cost over 20 images at 2048×1536: save-time deflate accounted for 2.41 s of a 2.50 s merge, while
+decode measured 0.21 s and bitmap conversion 0.09 s. Those phase figures belong to the design
+build, not the `chromium/7961` run above.
+
+An eligible JPEG is now embedded as its original stream with `DCTDecode`, avoiding both decode
+and re-encode. Every other image is decoded and embedded at no more than 200 DPI for the area it
+occupies on the page. PDFium exposes no API for embedding a pre-compressed non-JPEG stream, so
+PNG and GIF use the cap rather than passthrough. Four-component JPEGs are deliberately excluded:
+PDFium accepts them but renders the wrong colours. That failure measured MAD 18.33 against the
+raster path in the separate `FPDF API V7881` design measurement; the exclusion itself is pinned by
+`a_cmyk_jpeg_is_decoded_rather_than_embedded`, and every filter claim above is asserted by
+`image_filters` in `crates/core/tests/pdfium_compose_image.rs`.
+
+Copying PDF pages remains effectively free — 100 PDF pages in 0.001 s
+([issue #28](https://github.com/yasuflatland-lf/pdf-tools/issues/28#issuecomment-5134973783)) —
+so image embedding is still the whole cost. **At the scale the objective names, both paths are now
+under 10 s.** Past that scale the raster path is not, and the cap cannot take it there: what is
+left on a 900 MB corpus is PNG decode rather than embedding. The cap bounds the worst case and
+removes a third of the output size; it does not make decode cheaper.
 
 ### Why some rows are still unmeasured
 
