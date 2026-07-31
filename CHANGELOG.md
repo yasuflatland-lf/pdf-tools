@@ -7,7 +7,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Post-0.1.0 fixes. Every measured figure below comes from issue #68
+Nothing yet.
+
+## [0.2.0] — 2026-08-01
+
+Both image merge paths now meet the 10 s objective, the interface is rebuilt around its toolbar
+icons and reads English throughout, and the Rust domain is restructured around a single
+`MergeDocument` aggregate.
+
+Every measured figure below comes from issue #68
 ([the objective-scale run](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137691880)
 and [the worst-case run](https://github.com/yasuflatland-lf/pdf-tools/issues/68#issuecomment-5137808149));
 nothing here is estimated.
@@ -26,6 +34,39 @@ nothing here is estimated.
   900.2 MB PNG corpus — nine times the objective's size — it cut the measured result from 13.23 s
   and 858.7 MB to 11.63 s and 543.0 MB. That corpus stays above 10 s: what is left there is PNG
   decode rather than embedding, and no cap can reduce it.
+- **The dominant page size no longer depends on the order files were dropped in.** Sizes used to
+  be grouped by a tolerance comparison, which is not transitive: 595.0 pt matched 595.5 pt and
+  595.5 pt matched 596.0 pt, yet 595.0 pt did not match 596.0 pt, so which size won depended on
+  which page happened to be examined first. Each dimension is now rounded onto a 1 pt lattice,
+  which is an equivalence relation, and all six orderings of that witness agree.
+
+### Interface
+
+- The toolbar is rebuilt around its icons. The tools sit in a group held against the window
+  midpoint, so they stay put while the regions beside them change width; the file and page counts
+  become a quiet readout on the left, and `Merge` keeps the right edge to itself. Merge progress
+  moves onto the bar's bottom edge, where it costs no horizontal space. The redundant application
+  header above it is gone.
+- The window will not shrink below 960 px, which is what stops a long output file name from
+  sliding underneath the centred tools.
+- **Card focus follows the card, not the position.** The focus ring used to stay at a fixed index
+  while the plan changed underneath it, so after a delete the ring sat on a card that was not
+  selected and the next `Delete` acted on a selection the user could no longer see. Focus is now
+  tracked by card identity, and when the focused card is removed the ring and the selection move
+  together onto the card that replaced it.
+- **A command that changes nothing no longer arms Undo.** Dropping zero files, or a reorder that
+  puts a card back where it started, used to push an undo entry and discard the redo stack.
+- **Every on-screen string is English.** Eight error and status strings were still Japanese while
+  every control and every `aria-label` around them was English — in two components the same
+  element carried both languages at once.
+- An unreadable file's card names the reason instead of interpolating the PDF engine's own
+  message and a full filesystem path into the badge. A corrupt file now reads
+  `This file is damaged and could not be read`, and the engine's own message is kept in the log
+  at warn level.
+- On Windows the page grid counts its columns from the element that actually scrolls. Measuring
+  the wrapper around it counted the scrollbar's width as usable space, which could produce one
+  column too many at particular window widths and cards narrower than their 180 px minimum.
+  macOS overlay scrollbars never showed this.
 
 ### Reliability
 
@@ -38,10 +79,29 @@ nothing here is estimated.
 
 - The merge-failure dialog owns the keyboard while it is open, and the list view now matches the
   grid's arrow-key focus and selection behaviour.
+- The window-level shortcuts are served by one listener instead of one per component, so the
+  handler set no longer detaches and re-attaches as cards render.
 
 ### Thumbnails
 
 - The grid and list share the same thumbnail effect, and a failed thumbnail is visibly marked.
+
+### Architecture
+
+- `MergePlan` and its sources are bound into one `MergeDocument` aggregate. Every slot is
+  guaranteed by construction to name a listed source, which removed the four call sites that each
+  defended against that case independently and gave `source_of` a total signature.
+- Whether a source is grouped is derived from the plan rather than stored on `SourceFile`. The
+  field was never state: its only writer recomputed it from the plan after every mutating command.
+- `SourceFileDto`'s `kind` and `grouping` cross the IPC boundary as generated union types instead
+  of bare strings, so a typo in a frontend comparison is a type error rather than a silent
+  mismatch. `SourceStatus::Unreadable` likewise carries a typed reason instead of free text.
+- The grid and the list share one `CardSurface`; they were the same component twice and had begun
+  to drift. The unreachable `insert_at` and `pdfium_health` commands are removed, so every
+  registered command has a caller.
+- The undo history's bound and the fact that a source holding a duplicated page stays ungrouped
+  are now written down in `docs/architecture.md`. Both were behaviours a user could reach and
+  neither was documented.
 
 ## [0.1.0] — 2026-07-31
 
