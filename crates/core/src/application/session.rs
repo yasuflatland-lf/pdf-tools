@@ -188,7 +188,10 @@ impl Default for PlanSession {
 }
 
 fn push_bounded(stack: &mut Vec<Snapshot>, snapshot: Snapshot) {
-    if stack.len() == HISTORY_LIMIT {
+    // `>=` rather than `==`: `begin_change` pushes unbounded so that
+    // `finish_change` can take the entry back, so a command that panics in
+    // between leaves the stack one past the limit rather than exactly on it.
+    while stack.len() >= HISTORY_LIMIT {
         stack.remove(0);
     }
     stack.push(snapshot);
@@ -365,6 +368,22 @@ mod tests {
 
             assert!(!s.can_undo());
         }
+    }
+
+    #[test]
+    fn the_cap_still_holds_after_a_command_panics_mid_change() {
+        // `begin_change` pushes unbounded so that `finish_change` can drop the
+        // entry again; a command that panics in between leaves that entry
+        // behind, taking the stack one past the limit. The cap has to recover.
+        let mut s = session_with_pdf(3);
+        s.undo.clear();
+        for _ in 0..=HISTORY_LIMIT {
+            s.undo.push(s.snapshot());
+        }
+
+        s.remove(&[s.plan().slots()[0].id]);
+
+        assert_eq!(s.undo.len(), HISTORY_LIMIT);
     }
 
     #[test]
