@@ -75,6 +75,74 @@ fn image_filters(path: &std::path::Path) -> Vec<String> {
     })
 }
 
+/// The pixel dimensions PDFium recorded for the first embedded image on page 0.
+fn image_pixels(path: &std::path::Path) -> (i32, i32) {
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(path, None).unwrap();
+        let pages = document.pages();
+        let page = pages.get(0).unwrap();
+        page.objects()
+            .iter()
+            .find_map(|object| {
+                object
+                    .as_image_object()
+                    .map(|image| (image.width().unwrap(), image.height().unwrap()))
+            })
+            .expect("the composed page should hold an image object")
+    })
+}
+
+#[test]
+fn an_image_denser_than_the_cap_is_embedded_at_the_cap() {
+    // sample.png is 400x400. Fitted onto a one-inch square page it occupies
+    // 72x72 pt, which at 200 DPI is 200x200 px -- half its pixel width.
+    let out = temp_path("capped.pdf");
+    let plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: fixture("sample.png"),
+            fit_to: PageSize {
+                width_pt: 72.0,
+                height_pt: 72.0,
+            },
+        }],
+    };
+    engine().compose(&plan, &out).unwrap();
+
+    let (width, height) = image_pixels(&out);
+    assert_eq!((width, height), (200, 200));
+}
+
+#[test]
+fn an_image_already_under_the_cap_is_embedded_untouched() {
+    // The same 400x400 file on A4 occupies 595 pt, whose 200 DPI budget is
+    // 1654 px. Nothing that was lossless may become lossy.
+    let out = temp_path("uncapped.pdf");
+    engine().compose(&image_plan("sample.png"), &out).unwrap();
+
+    let (width, height) = image_pixels(&out);
+    assert_eq!((width, height), (400, 400));
+}
+
+#[test]
+fn a_passthrough_jpeg_is_never_downscaled() {
+    // Passthrough costs nothing regardless of resolution, and capping it would
+    // force a lossy decode and re-encode to achieve nothing.
+    let out = temp_path("uncapped-jpeg.pdf");
+    let plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: fixture("sample.jpg"),
+            fit_to: PageSize {
+                width_pt: 72.0,
+                height_pt: 72.0,
+            },
+        }],
+    };
+    engine().compose(&plan, &out).unwrap();
+
+    let (width, height) = image_pixels(&out);
+    assert_eq!((width, height), (800, 600));
+}
+
 #[test]
 fn a_baseline_jpeg_is_embedded_as_its_original_stream() {
     let out = temp_path("baseline-passthrough.pdf");
