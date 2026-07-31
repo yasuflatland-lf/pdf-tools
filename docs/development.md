@@ -111,6 +111,11 @@ Each layer is tested at the level where its mistakes actually live:
 - **CI** (`.github/workflows/ci.yml`) runs two jobs: _Rust_ on macOS (fetch PDFium → clippy →
   fmt → `cargo llvm-cov nextest` → Codecov) and _Frontend_ on Ubuntu (tsc → oxlint → oxfmt →
   knip → vitest).
+- The Codecov upload is a **hard gate** (`fail_ci_if_error: true`, no `continue-on-error`): a
+  dropped upload leaves Codecov showing the previous commit's numbers, which is indistinguishable
+  from a passing coverage report. `CODECOV_TOKEN` is a repository secret, so it is unavailable to
+  pull requests from forks — such a run fails on the upload step and needs a maintainer to re-run
+  it from a branch in this repository.
 - **Release** (`.github/workflows/release.yml`) triggers on a `v*` tag push, or manually against
   an existing tag. It builds a macOS universal bundle and a Windows bundle with `tauri-action`,
   and uploads them to the matching GitHub release. Release notes are authored by hand; the
