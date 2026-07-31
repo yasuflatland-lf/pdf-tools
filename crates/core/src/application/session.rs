@@ -67,18 +67,18 @@ impl PlanSession {
         images: &dyn ImageDecoder,
         paths: &[PathBuf],
     ) {
-        let previous_plan = self.begin_change();
+        self.begin_change();
         let result =
             AddSources { pdf, images }.execute(&self.plan, &self.sources, &mut self.ids, paths);
         self.plan = result.plan;
         self.sources = result.sources;
-        self.finish_change(&previous_plan);
+        self.finish_change();
     }
 
     /// Moves the named existing slots to `at`, indexed into the sequence that
     /// remains after those slots are removed. Unknown IDs are ignored.
     pub fn insert_at(&mut self, at: usize, slot_ids: &[SlotId]) {
-        let previous_plan = self.begin_change();
+        self.begin_change();
         let slots = self
             .plan
             .slots()
@@ -88,19 +88,19 @@ impl PlanSession {
             .collect::<Vec<_>>();
         let remaining = operations::remove(&self.plan, slot_ids);
         self.plan = operations::insert_at(&remaining, at, &slots);
-        self.finish_change(&previous_plan);
+        self.finish_change();
     }
 
     pub fn reorder(&mut self, from: Range<usize>, to: usize) {
-        let previous_plan = self.begin_change();
+        self.begin_change();
         self.plan = operations::reorder(&self.plan, from, to);
-        self.finish_change(&previous_plan);
+        self.finish_change();
     }
 
     pub fn remove(&mut self, ids: &[SlotId]) {
-        let previous_plan = self.begin_change();
+        self.begin_change();
         self.plan = operations::remove(&self.plan, ids);
-        self.finish_change(&previous_plan);
+        self.finish_change();
     }
 
     pub fn undo(&mut self) -> bool {
@@ -123,17 +123,26 @@ impl PlanSession {
         true
     }
 
-    fn begin_change(&mut self) -> MergePlan {
-        let previous_plan = self.plan.clone();
+    /// Parks the current state on the undo stack for `finish_change` to either
+    /// keep or discard. Nothing is cleared here: whether the command turns out
+    /// to be a no-op is not known yet, and a no-op must leave redo alone.
+    fn begin_change(&mut self) {
         let current = self.snapshot();
-        push_bounded(&mut self.undo, current);
-        self.redo.clear();
-        previous_plan
+        self.undo.push(current);
     }
 
-    fn finish_change(&mut self, previous_plan: &MergePlan) {
+    /// Retains the sources the new plan still justifies, then keeps the parked
+    /// entry only if the command actually moved something. A command that
+    /// changed nothing -- a Delete against a stale selection, a degenerate drag
+    /// range -- must not arm Undo, and must not cost the user their redo.
+    fn finish_change(&mut self) {
+        let previous = self
+            .undo
+            .pop()
+            .expect("begin_change must precede finish_change");
         self.sources.retain(|source| {
-            let owned_before = previous_plan
+            let owned_before = previous
+                .plan
                 .slots()
                 .iter()
                 .any(|slot| slot.source == source.id);
@@ -147,6 +156,16 @@ impl PlanSession {
             // unreadable file that the UI must continue to show.
             !owned_before || owns_now
         });
+
+        // Sources are compared too: adding an encrypted or unreadable file
+        // appends a zero-page source without contributing a slot, and undoing
+        // that has to take its error card away again.
+        if self.plan == previous.plan && self.sources == previous.sources {
+            return;
+        }
+
+        push_bounded(&mut self.undo, previous);
+        self.redo.clear();
     }
 
     fn snapshot(&self) -> Snapshot {
@@ -259,6 +278,18 @@ mod tests {
     }
 
     #[test]
+    fn a_no_op_does_not_clear_the_redo_stack() {
+        let mut s = session_with_pdf(3);
+        s.undo.clear();
+        s.remove(&[s.plan().slots()[0].id]);
+        assert!(s.undo());
+
+        s.remove(&[SlotId(9999)]);
+
+        assert!(s.can_redo());
+    }
+
+    #[test]
     fn undo_restores_grouping_state_as_well_as_the_plan() {
         let mut s = session_with_pdf(3);
         let source_id = s.sources()[0].id;
@@ -298,7 +329,8 @@ mod tests {
         assert!(!s.can_undo());
         assert!(!s.can_redo());
 
-        s.remove(&[]);
+        let pdf = FakePdfEngine::new().with_document("/document.pdf", document(1));
+        s.add_sources(&pdf, &FakeImageDecoder::new(), &["/document.pdf".into()]);
         assert!(s.can_undo());
         assert!(!s.can_redo());
 
@@ -309,6 +341,30 @@ mod tests {
         assert!(s.redo());
         assert!(s.can_undo());
         assert!(!s.can_redo());
+    }
+
+    #[test]
+    fn removing_an_unknown_slot_does_not_create_history() {
+        let mut s = session_with_pdf(3);
+        s.undo.clear();
+
+        s.remove(&[SlotId(9999)]);
+
+        assert!(!s.can_undo());
+    }
+
+    #[test]
+    fn degenerate_reorders_do_not_create_history() {
+        let ranges = [1..1, Range { start: 2, end: 1 }, 90..99];
+
+        for range in ranges {
+            let mut s = session_with_pdf(3);
+            s.undo.clear();
+
+            s.reorder(range, 0);
+
+            assert!(!s.can_undo());
+        }
     }
 
     #[test]
@@ -352,6 +408,25 @@ mod tests {
             .sources()
             .iter()
             .any(|source| source.status == SourceStatus::Encrypted));
+    }
+
+    #[test]
+    fn adding_an_encrypted_source_can_be_undone() {
+        let pdf = FakePdfEngine::new().with_failure(
+            "/locked.pdf",
+            PdfError::Encrypted {
+                path: "/locked.pdf".into(),
+            },
+        );
+        let mut s = PlanSession::new();
+
+        s.add_sources(&pdf, &FakeImageDecoder::new(), &["/locked.pdf".into()]);
+
+        assert!(s.can_undo());
+        assert_eq!(s.sources().len(), 1);
+        assert_eq!(s.sources()[0].status, SourceStatus::Encrypted);
+        assert!(s.undo());
+        assert!(s.sources().is_empty());
     }
 
     #[test]
