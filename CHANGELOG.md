@@ -122,9 +122,11 @@ single byte leaving the machine.
 ### Known limitations
 
 - **Merging images is slower than the 10 s objective.** 100 JPEGs at 2048×1536 (93.8 MB) take
-  13.1–13.6 s and produce an 858.9 MB file, because images are embedded as uncompressed bitmaps.
-  Merging PDF pages alone is effectively free (100 pages in 0.001 s). Passing the original JPEG
-  stream through, or compressing on embed, is the fix.
+  13.1–13.6 s and produce an 858.9 MB file, because every image is decoded and re-embedded as a
+  raw bitmap, which PDFium filters with `FlateDecode` when it saves — deflating photographic
+  pixels is slow and barely compresses them. Merging PDF pages alone is effectively free (100
+  pages in 0.001 s). Passing the original JPEG stream through, or embedding fewer pixels, is the
+  fix.
 - **The progress bar does not advance page by page.** Every progress tick is emitted before the
   merge engine starts, so the bar reaches 100% at once and the window then waits without further
   feedback — most visible on the slow image path above.
