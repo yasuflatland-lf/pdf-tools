@@ -46,6 +46,12 @@ export function PageGrid() {
    */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A modal owns the keyboard while it is open; nothing here may reach the
+      // document behind it.
+      if (useUiStore.getState().modalOpen) {
+        return;
+      }
+
       // dnd-kit's keyboard sensor steers a picked-up card with the same arrows
       // and calls `preventDefault` while it does; moving the focus as well would
       // drag one card and select another.

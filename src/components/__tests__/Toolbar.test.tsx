@@ -5,17 +5,23 @@ import type { ComposeProgressDto } from "../../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../../bindings/MergeReportDto";
 import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
+import { AppShell } from "../AppShell";
 import { Toolbar } from "../Toolbar";
 
 const mocks = vi.hoisted(() => ({
+  addSources: vi.fn(),
   compose: vi.fn(),
   defaultOutputDir: vi.fn(),
   joinPath: vi.fn((dir: string, name: string) => `${dir}/${name}`),
   onComposeProgress: vi.fn(),
+  onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
   parentDir: vi.fn((path: string) => path.slice(0, path.lastIndexOf("/"))),
   progress: {} as { handler?: (progress: ComposeProgressDto) => void },
+  rasterizeSlot: vi.fn(),
   rememberOutputDir: vi.fn(),
   redo: vi.fn(),
+  removeSlots: vi.fn(),
+  reorder: vi.fn(),
   revealItemInDir: vi.fn(),
   save: vi.fn(),
   undo: vi.fn(),
@@ -23,9 +29,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../lib/tauri-api", () => ({
+  addSources: mocks.addSources,
   compose: mocks.compose,
   onComposeProgress: mocks.onComposeProgress,
+  rasterizeSlot: mocks.rasterizeSlot,
   redo: mocks.redo,
+  removeSlots: mocks.removeSlots,
+  reorder: mocks.reorder,
   undo: mocks.undo,
 }));
 vi.mock("../../lib/output-dir", () => ({
@@ -36,6 +46,9 @@ vi.mock("../../lib/output-dir", () => ({
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: mocks.save }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: mocks.revealItemInDir }));
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({ onDragDropEvent: mocks.onDragDropEvent }),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,6 +62,19 @@ async function renderToolbar(): Promise<HTMLElement> {
 
   await act(async () => {
     root.render(<Toolbar />);
+  });
+
+  return container;
+}
+
+async function renderShell(): Promise<HTMLElement> {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  mountedRoots.push(root);
+
+  await act(async () => {
+    root.render(<AppShell />);
   });
 
   return container;
@@ -105,22 +131,34 @@ async function click(button: HTMLButtonElement): Promise<void> {
   });
 }
 
+function keyDown(init: KeyboardEventInit): void {
+  act(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, ...init }));
+  });
+}
+
 describe("Toolbar", () => {
   beforeEach(() => {
+    mocks.addSources.mockReset();
     mocks.compose.mockReset();
     mocks.defaultOutputDir.mockReset();
     mocks.joinPath.mockClear();
     mocks.onComposeProgress.mockReset();
+    mocks.onDragDropEvent.mockClear();
     mocks.parentDir.mockClear();
     mocks.rememberOutputDir.mockReset();
     mocks.revealItemInDir.mockReset();
     mocks.save.mockReset();
     mocks.unlisten.mockReset();
     mocks.progress.handler = undefined;
+    mocks.rasterizeSlot.mockReset();
     mocks.redo.mockReset();
+    mocks.removeSlots.mockReset();
+    mocks.reorder.mockReset();
     mocks.undo.mockReset();
 
     mocks.defaultOutputDir.mockResolvedValue("/Users/me/Downloads");
+    mocks.rasterizeSlot.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
     mocks.onComposeProgress.mockImplementation(
       async (handler: (progress: ComposeProgressDto) => void) => {
         mocks.progress.handler = handler;
@@ -130,7 +168,7 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid" });
+    useUiStore.setState({ viewMode: "grid", modalOpen: false });
   });
 
   afterEach(async () => {
@@ -143,9 +181,23 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid" });
+    useUiStore.setState({ viewMode: "grid", modalOpen: false });
     vi.restoreAllMocks();
   });
+
+  async function openTheFailureDialog(): Promise<void> {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    loadOneSlot();
+    usePlanStore.setState({ canUndo: true });
+    mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
+    mocks.compose.mockRejectedValue(new Error("merge unavailable"));
+    const container = await renderShell();
+
+    await click(getButton(container, "Merge"));
+
+    expect(container.querySelector('[role="alertdialog"]')).not.toBeNull();
+    consoleError.mockRestore();
+  }
 
   it("switches between grid and list views and reports the active mode", async () => {
     const container = await renderToolbar();
@@ -405,5 +457,46 @@ describe("Toolbar", () => {
     expect(getButton(container, "Merge").disabled).toBe(false);
     expect(mocks.unlisten).toHaveBeenCalledOnce();
     expect(consoleError).toHaveBeenCalledWith("compose failed", expect.any(Error));
+  });
+
+  it("keeps every document shortcut away from the page behind the dialog", async () => {
+    await openTheFailureDialog();
+
+    act(() => {
+      useUiStore.getState().selectSlots([1, 2]);
+    });
+
+    keyDown({ key: "Delete" });
+    expect(mocks.removeSlots).not.toHaveBeenCalled();
+
+    keyDown({ key: "z", metaKey: true });
+    expect(mocks.undo).not.toHaveBeenCalled();
+
+    keyDown({ key: "a", metaKey: true });
+    expect(useUiStore.getState().selectedSlots.size).toBe(2);
+
+    // The grid moves the focus and drags the selection along with it, so an
+    // untouched selection is how "the arrows reached nothing" is observed.
+    keyDown({ key: "ArrowRight" });
+    expect(useUiStore.getState().selectedSlots.size).toBe(2);
+
+    // Escape goes last: it is the one key the dialog itself consumes, so
+    // checking it earlier would close the dialog and unblock the rest.
+    keyDown({ key: "Escape" });
+    expect(useUiStore.getState().selectedSlots.size).toBe(2);
+  });
+
+  it("closes the dialog on Escape and lets the shortcuts back through", async () => {
+    await openTheFailureDialog();
+
+    keyDown({ key: "Escape" });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(useUiStore.getState().modalOpen).toBe(false);
+
+    act(() => {
+      useUiStore.getState().selectSlots([1]);
+    });
+    keyDown({ key: "Escape" });
+    expect(useUiStore.getState().selectedSlots.size).toBe(0);
   });
 });

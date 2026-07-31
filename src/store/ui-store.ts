@@ -21,6 +21,14 @@ interface UiState {
   expandedSources: Set<number>;
   selectedSlots: Set<number>;
   viewMode: ViewMode;
+  /**
+   * Whether a modal owns the keyboard. The document shortcuts live on `window`
+   * in three different components, so a modal cannot take the keyboard by
+   * mounting a listener of its own -- it has to say so somewhere all three can
+   * see.
+   */
+  modalOpen: boolean;
+  setModalOpen: (open: boolean) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleExpanded: (sourceId: number) => void;
   pruneExpanded: (sourceIds: number[]) => void;
@@ -34,6 +42,10 @@ export function createUiStore() {
     expandedSources: new Set(),
     selectedSlots: new Set(),
     viewMode: loadPersistedViewMode(),
+    modalOpen: false,
+    setModalOpen: (modalOpen) => {
+      set({ modalOpen });
+    },
     setViewMode: (viewMode) => {
       set({ viewMode });
       try {
