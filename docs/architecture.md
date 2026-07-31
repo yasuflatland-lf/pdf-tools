@@ -118,10 +118,9 @@ mid-drag:
 A collapsed card shows the number of pages actually present, not the original page range —
 `source.page_count` still counts pages the user has since deleted.
 
-The frontend has its own `groupContiguous` (`src/lib/grouping.ts`) that mirrors
-`domain::grouping::group_contiguous`. This is display-only derivation from a snapshot the backend
-already produced; the _decision_ about grouped versus ungrouped is made in Rust and shipped in the
-snapshot.
+Folding a run into a card is derived in the frontend by `groupContiguous`
+(`src/lib/grouping.ts`) from the snapshot the backend produced. Rust owns only the grouped/ungrouped
+decision, which it ships in that snapshot.
 
 ## Immutability and undo
 
@@ -199,8 +198,9 @@ breaks the TypeScript build rather than failing silently at runtime.
 
 An image page is fitted to the **dominant page size**: the most frequent size among the plan's
 PDF-backed slots, ties broken by first appearance in the plan, A4 portrait when the plan has no
-PDF pages at all. Sizes within 1 pt count as equal. The aspect ratio is preserved and the
-remaining area is white. An animated GIF contributes its first frame only.
+PDF pages at all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice,
+so the classification is independent of the order pages were added in. The aspect ratio is
+preserved and the remaining area is white. An animated GIF contributes its first frame only.
 
 ## Error handling
 

@@ -77,7 +77,7 @@ describe("ErrorDialog", () => {
     expect(dialog).not.toBeNull();
     expect(dialog?.getAttribute("aria-modal")).toBe("true");
     expect(headingId).not.toBeNull();
-    expect(document.getElementById(headingId as string)?.textContent).toBe("結合できませんでした");
+    expect(document.getElementById(headingId as string)?.textContent).toBe("Merge failed");
     expect(container.textContent).toContain("Merge could not read a source");
     expect(container.textContent).toContain("named.pdf");
     expect(container.textContent).toContain("locked.pdf");
@@ -89,7 +89,7 @@ describe("ErrorDialog", () => {
       <ErrorDialog files={[]} message="Merge failed" onClose={onClose} />,
     );
     const closeButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "閉じる",
+      (button) => button.textContent === "Close",
     );
 
     // The dialog takes focus so it can be dismissed without the mouse.

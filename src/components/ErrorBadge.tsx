@@ -6,9 +6,9 @@ function errorMessage(status: SourceStatusDto): string | null {
     return null;
   }
   if (status.kind === "encrypted") {
-    return "パスワードで保護されているため結合できません";
+    return "Password protected";
   }
-  return `読み込めないため結合できません: ${status.reason}`;
+  return `Could not be read: ${status.reason}`;
 }
 
 export function ErrorBadge({ status }: { status: SourceStatusDto }): ReactElement | null {

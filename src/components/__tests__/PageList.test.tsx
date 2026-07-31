@@ -225,7 +225,7 @@ describe("PageList", () => {
 
     const container = await renderList();
 
-    expect(container.textContent).toContain("サムネイルを表示できません");
+    expect(container.textContent).toContain("Thumbnail unavailable");
   });
 
   it("does not label every row with a status that cannot be anything but ready", async () => {
