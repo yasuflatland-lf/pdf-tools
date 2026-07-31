@@ -136,22 +136,42 @@ interface CardFocusOptions {
  * both views need it and only the column count differs -- the list is a grid one
  * column wide. The selection follows the focus so that Delete always acts on the
  * card the user is looking at.
+ *
+ * The focus is held as a card key rather than a position: `cards` is rebuilt from
+ * every snapshot, so a bare index silently points at whichever card moved into
+ * that slot after a delete, a reorder or an undo.
  */
 export function useCardFocus({
   cards,
   columnCount,
   scrollToIndex,
 }: CardFocusOptions): number | null {
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [focused, setFocused] = useState<{ key: string; index: number } | null>(null);
+  const focusedIndex =
+    focused === null
+      ? -1
+      : (() => {
+          const byKey = cards.findIndex((card) => card.key === focused.key);
+          // The focused card is gone: stay where the user was looking, clamped.
+          return byKey >= 0 ? byKey : Math.min(focused.index, cards.length - 1);
+        })();
+
+  // Once the focus has fallen back onto whatever card took that position, the
+  // selection has to follow it, or the next Delete acts on a card the ring is no
+  // longer drawn around.
+  useEffect(() => {
+    if (focused !== null && focusedIndex >= 0 && cards[focusedIndex].key !== focused.key) {
+      useUiStore.getState().selectSlots(cards[focusedIndex].slotIds);
+    }
+  }, [cards, focused, focusedIndex]);
 
   const moveFocus = (action: ShortcutAction): boolean => {
-    const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
-    const next = nextFocusIndex(action, current, cards.length, columnCount);
+    const next = nextFocusIndex(action, focusedIndex, cards.length, columnCount);
     if (next === null) {
       return false;
     }
 
-    setFocusedIndex(next);
+    setFocused({ key: cards[next].key, index: next });
     scrollToIndex(Math.floor(next / columnCount));
     useUiStore.getState().selectSlots(cards[next].slotIds);
     return true;
@@ -164,7 +184,7 @@ export function useCardFocus({
     "focus-row-next": () => moveFocus("focus-row-next"),
   });
 
-  return focusedIndex;
+  return focusedIndex >= 0 ? focusedIndex : null;
 }
 
 interface CardRowsOptions {
