@@ -7,6 +7,15 @@ coverage:
       default:
         informational: true
 
+flags:
+  rust:
+    paths:
+      - crates/core
+      - src-tauri
+  frontend:
+    paths:
+      - src
+
 ignore:
   - "src-tauri/gen/**"
   - "scripts/**"

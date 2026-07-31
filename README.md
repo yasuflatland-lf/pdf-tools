@@ -1,6 +1,8 @@
 # PDF Tools
 
 [![CI](https://img.shields.io/github/actions/workflow/status/yasuflatland-lf/pdf-tools/ci.yml?branch=main&label=CI&logo=github)](https://github.com/yasuflatland-lf/pdf-tools/actions/workflows/ci.yml)
+[![backend coverage](https://img.shields.io/codecov/c/github/yasuflatland-lf/pdf-tools?flag=rust&label=backend%20coverage&logo=codecov)](https://codecov.io/gh/yasuflatland-lf/pdf-tools)
+[![frontend coverage](https://img.shields.io/codecov/c/github/yasuflatland-lf/pdf-tools?flag=frontend&label=frontend%20coverage&logo=codecov)](https://codecov.io/gh/yasuflatland-lf/pdf-tools)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A native desktop app (macOS / Windows) that merges **PDFs and images (jpg / png / gif)** into a
