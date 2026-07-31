@@ -1,7 +1,7 @@
 use pdf_tools_core::application::ports::MergeReport;
 use pdf_tools_core::application::session::PlanSession;
 use pdf_tools_core::domain::plan::PageSlot;
-use pdf_tools_core::domain::source::{SourceFile, SourceKind, SourceStatus};
+use pdf_tools_core::domain::source::{SourceFile, SourceKind, SourceStatus, UnreadableReason};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -77,6 +77,16 @@ pub enum GroupingDto {
     Ungrouped,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/", rename_all = "camelCase")]
+pub enum UnreadableReasonDto {
+    UnsupportedFormat,
+    Damaged,
+    Missing,
+    EngineUnavailable,
+}
+
 /// Why a source does or does not contribute pages. Tagged so TypeScript can
 /// narrow on `kind` and still reach `reason`.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -85,7 +95,7 @@ pub enum GroupingDto {
 pub enum SourceStatusDto {
     Ready,
     Encrypted,
-    Unreadable { reason: String },
+    Unreadable { reason: UnreadableReasonDto },
 }
 
 impl PlanSnapshot {
@@ -155,9 +165,20 @@ impl From<&SourceStatus> for SourceStatusDto {
         match status {
             SourceStatus::Ready => Self::Ready,
             SourceStatus::Encrypted => Self::Encrypted,
-            SourceStatus::Unreadable { reason } => Self::Unreadable {
-                reason: reason.clone(),
+            SourceStatus::Unreadable(reason) => Self::Unreadable {
+                reason: (*reason).into(),
             },
+        }
+    }
+}
+
+impl From<UnreadableReason> for UnreadableReasonDto {
+    fn from(reason: UnreadableReason) -> Self {
+        match reason {
+            UnreadableReason::UnsupportedFormat => Self::UnsupportedFormat,
+            UnreadableReason::Damaged => Self::Damaged,
+            UnreadableReason::Missing => Self::Missing,
+            UnreadableReason::EngineUnavailable => Self::EngineUnavailable,
         }
     }
 }
@@ -235,12 +256,12 @@ mod tests {
         assert_eq!(encrypted, serde_json::json!({ "kind": "encrypted" }));
 
         let unreadable = serde_json::to_value(SourceStatusDto::Unreadable {
-            reason: "broken xref".to_owned(),
+            reason: UnreadableReasonDto::Damaged,
         })
         .unwrap();
         assert_eq!(
             unreadable,
-            serde_json::json!({ "kind": "unreadable", "reason": "broken xref" })
+            serde_json::json!({ "kind": "unreadable", "reason": "damaged" })
         );
     }
 
