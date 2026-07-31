@@ -5,8 +5,7 @@ use pdf_tools_core::application::ports::PdfEngine;
 use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use presentation::commands::{
-    add_sources, compose, insert_at, pdfium_health, rasterize_slot, redo, remove_slots, reorder,
-    undo, PdfiumState,
+    add_sources, compose, rasterize_slot, redo, remove_slots, reorder, undo,
 };
 use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
@@ -84,14 +83,11 @@ pub fn run() {
                 pdf_engine,
                 Arc::new(ImageCrateDecoder),
             ));
-            app.manage(PdfiumState::new(pdfium));
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            pdfium_health,
             add_sources,
-            insert_at,
             reorder,
             remove_slots,
             undo,

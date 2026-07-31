@@ -2,9 +2,8 @@ use std::path::{Path, PathBuf};
 
 use crate::application::errors::PdfError;
 use crate::application::ports::{ComposeEntry, ComposePlan, MergeReport, PdfEngine};
-use crate::domain::page_size::dominant_page_size;
-use crate::domain::plan::MergePlan;
-use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
+use crate::domain::document::MergeDocument;
+use crate::domain::source::{SourceKind, SourceStatus};
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ComposeError {
@@ -12,6 +11,8 @@ pub enum ComposeError {
     SourceMissing { path: PathBuf },
     #[error("nothing to merge: the plan is empty")]
     EmptyPlan,
+    #[error("nothing to merge: the document has no usable pages")]
+    NoUsableSources,
     #[error(transparent)]
     Engine(#[from] PdfError),
 }
@@ -29,33 +30,28 @@ impl Compose<'_> {
     /// assigning every image the plan's dominant page size), verifies that every
     /// source still exists, then hands the work to the engine.
     ///
-    /// Slots whose source is unknown or in a failed state contribute no entry:
-    /// such a source never produces slots in practice, so the resolution step
-    /// skips it defensively instead of failing. Every remaining source is
-    /// checked before the engine runs, so a missing file can never leave a
-    /// half-written output behind.
+    /// Slots whose source is in a failed state contribute no entry. Every
+    /// remaining source is checked before the engine runs, so a missing file
+    /// can never leave a half-written output behind.
     pub fn execute(
         &self,
-        plan: &MergePlan,
-        sources: &[SourceFile],
+        document: &MergeDocument,
         dest: &Path,
         progress: &dyn ProgressSink,
     ) -> Result<MergeReport, ComposeError> {
-        if plan.is_empty() {
+        if document.plan().is_empty() {
             return Err(ComposeError::EmptyPlan);
         }
 
-        let fit_to = dominant_page_size(plan, sources);
-        let entries = plan
+        let fit_to = document.dominant_page_size();
+        let entries = document
+            .plan()
             .slots()
             .iter()
-            .filter_map(|slot| {
-                let source = sources.iter().find(|source| source.id == slot.source)?;
-                if source.status != SourceStatus::Ready {
-                    return None;
-                }
-
-                Some(match source.kind {
+            .filter(|slot| document.source_of(slot).status == SourceStatus::Ready)
+            .map(|slot| {
+                let source = document.source_of(slot);
+                match source.kind {
                     SourceKind::Pdf => ComposeEntry::PdfPage {
                         path: source.path.clone(),
                         page: slot.page,
@@ -64,12 +60,12 @@ impl Compose<'_> {
                         path: source.path.clone(),
                         fit_to,
                     },
-                })
+                }
             })
             .collect::<Vec<_>>();
 
         if entries.is_empty() {
-            return Err(ComposeError::EmptyPlan);
+            return Err(ComposeError::NoUsableSources);
         }
 
         for entry in &entries {
@@ -102,10 +98,11 @@ mod tests {
 
     use super::*;
     use crate::application::ports::ComposeEntry;
+    use crate::domain::document::MergeDocument;
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
-    use crate::domain::plan::PageSlot;
-    use crate::domain::source::{Grouping, SourceKind, SourceStatus};
+    use crate::domain::plan::{MergePlan, PageSlot};
+    use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
     use crate::infrastructure::fake_engine::FakePdfEngine;
 
     const LETTER: PageSize = PageSize {
@@ -161,7 +158,6 @@ mod tests {
             id: SourceId(id),
             path,
             kind: SourceKind::Pdf,
-            grouping: Grouping::Grouped,
             page_count: page_sizes.len() as u32,
             page_sizes,
             status: SourceStatus::Ready,
@@ -173,14 +169,13 @@ mod tests {
             id: SourceId(id),
             path,
             kind: SourceKind::Image,
-            grouping: Grouping::Ungrouped,
             page_count: 1,
             page_sizes: Vec::new(),
             status: SourceStatus::Ready,
         }
     }
 
-    fn plan_with_pdf_and_image() -> (TempDir, MergePlan, Vec<SourceFile>) {
+    fn plan_with_pdf_and_image() -> (TempDir, MergeDocument) {
         let temp_dir = tempdir().expect("temporary directory should be created");
         let pdf_path = create_file(&temp_dir, "document.pdf");
         let image_path = create_file(&temp_dir, "image.png");
@@ -189,10 +184,10 @@ mod tests {
             pdf_source(10, pdf_path, vec![PageSize::A4_PORTRAIT]),
             image_source(20, image_path),
         ];
-        (temp_dir, plan, sources)
+        (temp_dir, MergeDocument::new(plan, sources))
     }
 
-    fn plan_with_letter_pdf_and_image() -> (TempDir, MergePlan, Vec<SourceFile>) {
+    fn plan_with_letter_pdf_and_image() -> (TempDir, MergeDocument) {
         let temp_dir = tempdir().expect("temporary directory should be created");
         let pdf_path = create_file(&temp_dir, "letter.pdf");
         let image_path = create_file(&temp_dir, "image.png");
@@ -201,10 +196,10 @@ mod tests {
             pdf_source(10, pdf_path, vec![LETTER]),
             image_source(20, image_path),
         ];
-        (temp_dir, plan, sources)
+        (temp_dir, MergeDocument::new(plan, sources))
     }
 
-    fn plan_with_nonexistent_source() -> (TempDir, MergePlan, Vec<SourceFile>) {
+    fn plan_with_nonexistent_source() -> (TempDir, MergeDocument) {
         let temp_dir = tempdir().expect("temporary directory should be created");
         let existing_path = create_file(&temp_dir, "existing.pdf");
         let missing_path = temp_dir.path().join("missing.png");
@@ -213,10 +208,10 @@ mod tests {
             pdf_source(10, existing_path, vec![PageSize::A4_PORTRAIT]),
             image_source(20, missing_path),
         ];
-        (temp_dir, plan, sources)
+        (temp_dir, MergeDocument::new(plan, sources))
     }
 
-    fn plan_with_three_slots() -> (TempDir, MergePlan, Vec<SourceFile>) {
+    fn plan_with_three_slots() -> (TempDir, MergeDocument) {
         let temp_dir = tempdir().expect("temporary directory should be created");
         let pdf_path = create_file(&temp_dir, "two-pages.pdf");
         let image_path = create_file(&temp_dir, "image.png");
@@ -229,15 +224,15 @@ mod tests {
             ),
             image_source(20, image_path),
         ];
-        (temp_dir, plan, sources)
+        (temp_dir, MergeDocument::new(plan, sources))
     }
 
     #[test]
     fn the_resolved_plan_follows_the_slot_order() {
         let engine = FakePdfEngine::new();
-        let (_temp_dir, plan, sources) = plan_with_pdf_and_image();
+        let (_temp_dir, document) = plan_with_pdf_and_image();
         Compose { pdf: &engine }
-            .execute(&plan, &sources, Path::new("/out.pdf"), &NullProgress)
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
             .unwrap();
         let composed = engine.last_composed().unwrap();
         assert!(matches!(composed.entries[0], ComposeEntry::PdfPage { .. }));
@@ -247,9 +242,9 @@ mod tests {
     #[test]
     fn every_image_is_fitted_to_the_dominant_page_size() {
         let engine = FakePdfEngine::new();
-        let (_temp_dir, plan, sources) = plan_with_letter_pdf_and_image();
+        let (_temp_dir, document) = plan_with_letter_pdf_and_image();
         Compose { pdf: &engine }
-            .execute(&plan, &sources, Path::new("/out.pdf"), &NullProgress)
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
             .unwrap();
         let composed = engine.last_composed().unwrap();
         match &composed.entries[1] {
@@ -263,9 +258,9 @@ mod tests {
     #[test]
     fn a_missing_source_aborts_before_the_engine_is_called() {
         let engine = FakePdfEngine::new();
-        let (_temp_dir, plan, sources) = plan_with_nonexistent_source();
+        let (_temp_dir, document) = plan_with_nonexistent_source();
         let err = Compose { pdf: &engine }
-            .execute(&plan, &sources, Path::new("/out.pdf"), &NullProgress)
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
             .unwrap_err();
         assert!(matches!(err, ComposeError::SourceMissing { .. }));
         assert!(
@@ -280,8 +275,7 @@ mod tests {
             pdf: &FakePdfEngine::new(),
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             Path::new("/out.pdf"),
             &NullProgress,
         )
@@ -292,11 +286,11 @@ mod tests {
     #[test]
     fn progress_is_reported_for_every_entry_and_ends_at_the_total() {
         let sink = RecordingProgress::default();
-        let (_temp_dir, plan, sources) = plan_with_three_slots();
+        let (_temp_dir, document) = plan_with_three_slots();
         Compose {
             pdf: &FakePdfEngine::new(),
         }
-        .execute(&plan, &sources, Path::new("/out.pdf"), &sink)
+        .execute(&document, Path::new("/out.pdf"), &sink)
         .unwrap();
         let reports = sink.reports();
         assert_eq!(reports.last(), Some(&(3, 3)));
@@ -317,8 +311,9 @@ mod tests {
         ];
         let engine = FakePdfEngine::new();
 
+        let document = MergeDocument::new(plan, sources);
         Compose { pdf: &engine }
-            .execute(&plan, &sources, Path::new("/out.pdf"), &NullProgress)
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
             .unwrap();
 
         let composed = engine.last_composed().unwrap();
@@ -327,9 +322,9 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_that_resolves_to_no_entry_is_rejected() {
+    fn a_document_with_only_unusable_sources_reports_the_real_situation() {
         let temp_dir = tempdir().expect("temporary directory should be created");
-        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 99, 0)]);
+        let plan = MergePlan::new(vec![slot(1, 10, 0)]);
         let sources = vec![SourceFile {
             status: SourceStatus::Encrypted,
             ..pdf_source(
@@ -338,13 +333,14 @@ mod tests {
                 vec![PageSize::A4_PORTRAIT],
             )
         }];
+        let document = MergeDocument::new(plan, sources);
         let engine = FakePdfEngine::new();
 
         let err = Compose { pdf: &engine }
-            .execute(&plan, &sources, Path::new("/out.pdf"), &NullProgress)
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
             .unwrap_err();
 
-        assert_eq!(err, ComposeError::EmptyPlan);
+        assert_eq!(err, ComposeError::NoUsableSources);
         assert!(
             engine.last_composed().is_none(),
             "the engine must not be invoked"
@@ -354,11 +350,11 @@ mod tests {
     #[test]
     fn progress_reports_are_monotonic_and_called_exactly_total_times() {
         let sink = RecordingProgress::default();
-        let (_temp_dir, plan, sources) = plan_with_three_slots();
+        let (_temp_dir, document) = plan_with_three_slots();
         Compose {
             pdf: &FakePdfEngine::new(),
         }
-        .execute(&plan, &sources, Path::new("/out.pdf"), &sink)
+        .execute(&document, Path::new("/out.pdf"), &sink)
         .unwrap();
 
         assert_eq!(sink.reports(), vec![(1, 3), (2, 3), (3, 3)]);

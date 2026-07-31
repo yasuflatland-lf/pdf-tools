@@ -16,12 +16,14 @@ add, insert, reorder, delete, undo — is a pure function from one plan to the n
 | `PageSlot`                  | One output page. Carries a `SlotId`, the source it came from, and a page index.         |
 | `MergePlan`                 | The ordered `Vec<PageSlot>`. Vector order _is_ output page order.                       |
 | `SourceFile`                | One file the user added: a PDF or an image.                                             |
+| `MergeDocument`             | A `MergePlan` and its sources, with every slot guaranteed to name a listed source.      |
 | Group                       | A contiguous run of slots from one source, drawn as a single card.                      |
 | probe / rasterize / compose | The three PDF engine operations: read metadata / render a page / write the merged file. |
 
 `SlotId` is a standalone monotonic id rather than `(source, page)`, because the same page may
 appear more than once in a plan and a composite key would make those duplicates indistinguishable
-in the UI.
+in the UI. That support does not make duplicates groupable: while both copies remain, their source
+stays ungrouped under the strict-ascent rule below.
 
 ## Crate layout and dependency rule
 
@@ -41,7 +43,7 @@ flowchart TB
         ports["Ports:<br>PdfEngine, ImageDecoder"]
     end
     subgraph domain["domain / crates/core"]
-        model["MergePlan, PageSlot,<br>SourceFile, PageSize"]
+        model["MergeDocument, MergePlan,<br>PageSlot, SourceFile, PageSize"]
         ops["Pure operations<br>+ grouping rules"]
     end
     subgraph infra["infrastructure / crates/core"]
@@ -62,13 +64,13 @@ flowchart TB
 **Dependencies flow in one direction only:** presentation → application → domain, and
 infrastructure → domain. Nothing flows back. Concretely:
 
-- **`domain` is pure.** No IO, no async, no external crates. It is `MergePlan`, `PageSlot`,
-  `SourceFile`, `PageSize`, the three plan operations (`insert_at` / `remove` / `reorder`), the
-  grouping rules, and `dominant_page_size`. All of it is unit- and property-testable with no
-  fixtures.
+- **`domain` is pure.** No IO, no async, no external crates. It is `MergeDocument`, `MergePlan`,
+  `PageSlot`, `SourceFile`, `PageSize`, the three plan operations (`insert_at` / `remove` /
+  `reorder`), and the document's grouping and dominant-page-size queries. All of it is unit- and
+  property-testable with no fixtures.
 - **`application` owns the use cases and the ports.** `AddSources` probes new files and appends
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
-  holds the current plan, the source list, and the undo/redo stacks.
+  holds the current document and its undo/redo stacks.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
   `ImageCrateDecoder` (the `image` crate), a PNG encoder, and `FakePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
@@ -109,18 +111,21 @@ implementation, and every application-layer test runs against it.
 One rule governs both directions, and it is evaluated only after an operation commits — never
 mid-drag:
 
-- **A source ungroups when a slot from another source lands strictly inside its run** (between its
-  first and last slot). Insertions at a boundary between groups do not ungroup anything.
+- **A source ungroups when an operation leaves its slots non-contiguous or no longer ascending.**
+  In the current UI, that operation is a drag (`reorder`).
 - **An ungrouped source regroups automatically once its slots are contiguous again _and_ their
-  page numbers increase monotonically.** Deletion leaves gaps (1, 2, 4, 5) that stay monotonic, so
-  those refold; a swap (1, 2, 7, 4, 5) does not.
+  page numbers strictly increase.** Deletion leaves gaps (1, 2, 4, 5) that stay ascending, so
+  those refold; a swap (1, 2, 7, 4, 5) does not. A source with two copies of the same page stays
+  ungrouped for as long as both copies remain in the plan. The ascent is strict rather than
+  non-decreasing because a collapsed card's page count would otherwise misdescribe a run holding
+  a page twice.
 
 A collapsed card shows the number of pages actually present, not the original page range —
 `source.page_count` still counts pages the user has since deleted.
 
 Folding a run into a card is derived in the frontend by `groupContiguous`
-(`src/lib/grouping.ts`) from the snapshot the backend produced. Rust owns only the grouped/ungrouped
-decision, which it ships in that snapshot.
+(`src/lib/grouping.ts`) from the snapshot the backend produced. Rust derives the grouped/ungrouped
+decision from the plan on demand with `can_regroup` and ships that projection in the snapshot.
 
 ## Immutability and undo
 
@@ -130,18 +135,24 @@ pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
 pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
 ```
 
-Every operation returns a new plan, so undo/redo is nothing but a stack of plans in `PlanSession`.
-A `PageSlot` is 24 bytes (two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan
-costs ~24 KB per stack entry — cheap enough that no diffing scheme is warranted.
+Every operation returns a new plan. `PlanSession` pairs that plan with its sources in a
+`MergeDocument`, so undo/redo is nothing but stacks of documents. The history retains the most
+recent 100 states and discards older ones, so undoing to exhaustion returns to the oldest retained
+state, not necessarily to the empty document the session started from. A `PageSlot` is 24 bytes
+(two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan costs ~24 KB per stack
+entry — cheap enough that no diffing scheme is warranted.
 
 ## State ownership
 
 | Kind                     | Home                       | Contents                                                                                              |
 | ------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Canonical document state | **Rust (`crates/core`)**   | `MergePlan`, undo/redo stacks, the `SourceFile` list, each source's grouped/ungrouped state           |
+| Canonical document state | **Rust (`crates/core`)**   | `MergeDocument` plus undo/redo stacks                                                                 |
+| Derived document data    | **Rust → snapshot**        | Each source's grouped/ungrouped decision, computed from `MergePlan` by `can_regroup`                  |
 | Transient view state     | **Zustand (`src/store/`)** | expanded/collapsed cards, selection, focus, grid vs list, drag preview position, thumbnail blob cache |
 
-The dividing question is "must undo restore it?". If yes, it lives in Rust.
+The dividing question is "must undo restore it?". If yes, it lives in Rust or is derived from
+canonical Rust state. Grouping needs no stored flag: undo restores the plan, which restores
+everything derived from that plan, including the grouping decision shipped to the frontend.
 
 This is why `plan-store.ts` exposes `setSnapshot` and nothing else: **every command returns a whole
 `PlanSnapshot` and the store only ever replaces its contents.** A local `reorder` helper on the
@@ -168,16 +179,14 @@ pinning that a panic while the session is locked does not lose the document — 
 
 Every plan command returns a fresh `PlanSnapshot`.
 
-| Command                          | Semantics                                                                          |
-| -------------------------------- | ---------------------------------------------------------------------------------- |
-| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                           |
-| `insert_at(index, slot_ids)`     | Insert at a position; ungroup the affected source if the insert lands inside a run |
-| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                               |
-| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping    |
-| `undo()` / `redo()`              | Move along the plan stack                                                          |
-| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                                |
-| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                       |
-| `pdfium_health()`                | Report whether PDFium loaded, and its version                                      |
+| Command                          | Semantics                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------- |
+| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
+| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
+| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
+| `undo()` / `redo()`              | Move along the plan stack                                                       |
+| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
+| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                    |
 
 Two shapes are deliberate:
 
