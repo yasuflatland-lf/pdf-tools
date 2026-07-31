@@ -52,7 +52,9 @@ describe("ToolbarIconButton", () => {
   });
 
   it("uses the bare label as the tooltip when there is no shortcut", async () => {
-    const container = await render(<ToolbarIconButton icon={Undo2} label="Undo" onClick={() => {}} />);
+    const container = await render(
+      <ToolbarIconButton icon={Undo2} label="Undo" onClick={() => {}} />,
+    );
 
     expect(onlyButton(container).getAttribute("title")).toBe("Undo");
   });
