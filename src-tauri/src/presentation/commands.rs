@@ -243,7 +243,7 @@ mod tests {
     use pdf_tools_core::domain::source::DocumentInfo;
     use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 
-    use super::super::dto::SourceStatusDto;
+    use super::super::dto::{GroupingDto, SourceStatusDto};
     use super::*;
 
     fn document(pages: u32) -> DocumentInfo {
@@ -295,6 +295,6 @@ mod tests {
 
         assert!(snapshot.slots.is_empty());
         assert_eq!(snapshot.sources[0].status, SourceStatusDto::Encrypted);
-        assert_eq!(snapshot.sources[0].grouping, "grouped");
+        assert_eq!(snapshot.sources[0].grouping, GroupingDto::Grouped);
     }
 }

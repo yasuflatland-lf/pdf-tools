@@ -46,8 +46,7 @@ pub struct PageSlotDto {
     pub page: u32,
 }
 
-/// A source file and the metadata the UI needs to label it. `kind` is `"pdf"`
-/// or `"image"`; `grouping` is `"grouped"` or `"ungrouped"`; `file_name` is the
+/// A source file and the metadata the UI needs to label it. `file_name` is the
 /// final path component, for display when the full path is too long.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
@@ -56,10 +55,26 @@ pub struct SourceFileDto {
     pub id: u64,
     pub path: String,
     pub file_name: String,
-    pub kind: String,
-    pub grouping: String,
+    pub kind: SourceKindDto,
+    pub grouping: GroupingDto,
     pub page_count: u32,
     pub status: SourceStatusDto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/bindings/", rename_all = "lowercase")]
+pub enum SourceKindDto {
+    Pdf,
+    Image,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/bindings/", rename_all = "lowercase")]
+pub enum GroupingDto {
+    Grouped,
+    Ungrouped,
 }
 
 /// Why a source does or does not contribute pages. Tagged so TypeScript can
@@ -114,15 +129,13 @@ impl From<&SourceFile> for SourceFileDto {
             path,
             file_name,
             kind: match source.kind {
-                SourceKind::Pdf => "pdf",
-                SourceKind::Image => "image",
-            }
-            .into(),
+                SourceKind::Pdf => SourceKindDto::Pdf,
+                SourceKind::Image => SourceKindDto::Image,
+            },
             grouping: match source.grouping {
-                Grouping::Grouped => "grouped",
-                Grouping::Ungrouped => "ungrouped",
-            }
-            .into(),
+                Grouping::Grouped => GroupingDto::Grouped,
+                Grouping::Ungrouped => GroupingDto::Ungrouped,
+            },
             page_count: source.page_count,
             status: SourceStatusDto::from(&source.status),
         }
@@ -181,16 +194,20 @@ mod tests {
         assert_eq!(dto.id, 7);
         assert_eq!(dto.path, "/deep/dir/invoice.pdf");
         assert_eq!(dto.file_name, "invoice.pdf");
-        assert_eq!(dto.kind, "pdf");
-        assert_eq!(dto.grouping, "ungrouped");
+        assert_eq!(dto.kind, SourceKindDto::Pdf);
+        assert_eq!(dto.grouping, GroupingDto::Ungrouped);
         assert_eq!(dto.page_count, 2);
         assert_eq!(dto.status, SourceStatusDto::Ready);
+
+        let value = serde_json::to_value(dto).unwrap();
+        assert_eq!(value["kind"], serde_json::json!("pdf"));
+        assert_eq!(value["grouping"], serde_json::json!("ungrouped"));
     }
 
     #[test]
     fn an_image_source_is_labelled_image() {
         let dto = SourceFileDto::from(&source("/p.png", SourceKind::Image, SourceStatus::Ready));
-        assert_eq!(dto.kind, "image");
+        assert_eq!(dto.kind, SourceKindDto::Image);
         assert_eq!(dto.file_name, "p.png");
     }
 

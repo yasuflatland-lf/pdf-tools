@@ -14,7 +14,7 @@ use pdf_tools_lib::presentation::commands::{
     add_sources_inner, compose_inner, insert_at_inner, rasterize_slot_inner, redo_inner,
     remove_slots_inner, reorder_inner, undo_inner,
 };
-use pdf_tools_lib::presentation::dto::PlanSnapshot;
+use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
 use tempfile::TempDir;
 
@@ -288,9 +288,9 @@ fn inserting_inside_a_group_marks_the_source_ungrouped_in_the_snapshot() {
     let pdf_source = snapshot
         .sources
         .iter()
-        .find(|source| source.kind == "pdf")
+        .find(|source| source.kind == SourceKindDto::Pdf)
         .unwrap();
-    assert_eq!(pdf_source.grouping, "ungrouped");
+    assert_eq!(pdf_source.grouping, GroupingDto::Ungrouped);
 }
 
 #[test]
@@ -299,7 +299,7 @@ fn add_sources_returns_a_snapshot_containing_the_new_slots() {
     let snapshot = add_sources_inner(&state, vec!["/a.pdf".into()]).unwrap();
 
     assert_eq!(snapshot.slots.len(), 3);
-    assert_eq!(snapshot.sources[0].kind, "pdf");
+    assert_eq!(snapshot.sources[0].kind, SourceKindDto::Pdf);
 }
 
 #[test]
