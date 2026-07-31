@@ -10,13 +10,6 @@ pub enum SourceKind {
     Image,
 }
 
-/// Whether pages from a source are grouped together.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Grouping {
-    Grouped,
-    Ungrouped,
-}
-
 /// The availability of a source file.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SourceStatus {
@@ -31,7 +24,6 @@ pub struct SourceFile {
     pub id: SourceId,
     pub path: PathBuf,
     pub kind: SourceKind,
-    pub grouping: Grouping,
     pub page_count: u32,
     /// One entry per page for PDF sources. Empty for images: an image page is
     /// sized from the plan's dominant page size, never from the file itself.

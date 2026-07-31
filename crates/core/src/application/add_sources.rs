@@ -5,7 +5,7 @@ use crate::application::ports::{ImageDecoder, PdfEngine};
 use crate::domain::ids::{IdSequence, PageIndex};
 use crate::domain::operations::insert_at;
 use crate::domain::plan::{MergePlan, PageSlot};
-use crate::domain::source::{Grouping, SourceFile, SourceKind, SourceStatus};
+use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
 
 pub struct AddSources<'a> {
     pub pdf: &'a dyn PdfEngine,
@@ -44,7 +44,6 @@ impl AddSources<'_> {
                         id: source_id,
                         path: path.clone(),
                         kind,
-                        grouping: Grouping::Grouped,
                         page_count: 0,
                         page_sizes: Vec::new(),
                         status: SourceStatus::Encrypted,
@@ -59,7 +58,6 @@ impl AddSources<'_> {
                             id: source_id,
                             path: path.clone(),
                             kind,
-                            grouping: Grouping::Grouped,
                             page_count: info.page_count,
                             page_sizes: info.page_sizes,
                             status: SourceStatus::Ready,
@@ -69,7 +67,6 @@ impl AddSources<'_> {
                         id: source_id,
                         path: path.clone(),
                         kind,
-                        grouping: Grouping::Grouped,
                         page_count: 0,
                         page_sizes: Vec::new(),
                         status: SourceStatus::Encrypted,
@@ -78,7 +75,6 @@ impl AddSources<'_> {
                         id: source_id,
                         path: path.clone(),
                         kind,
-                        grouping: Grouping::Grouped,
                         page_count: 0,
                         page_sizes: Vec::new(),
                         status: SourceStatus::Unreadable {
@@ -97,7 +93,6 @@ impl AddSources<'_> {
                             id: source_id,
                             path: path.clone(),
                             kind,
-                            grouping: Grouping::Grouped,
                             page_count: 1,
                             page_sizes: Vec::new(),
                             status: SourceStatus::Ready,
@@ -107,7 +102,6 @@ impl AddSources<'_> {
                         id: source_id,
                         path: path.clone(),
                         kind,
-                        grouping: Grouping::Grouped,
                         page_count: 0,
                         page_sizes: Vec::new(),
                         status: SourceStatus::Unreadable {
@@ -148,7 +142,7 @@ mod tests {
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::{IdSequence, PageIndex, SlotId, SourceId};
     use crate::domain::plan::{MergePlan, PageSlot};
-    use crate::domain::source::{DocumentInfo, Grouping, ImageInfo, SourceKind, SourceStatus};
+    use crate::domain::source::{DocumentInfo, ImageInfo, SourceKind, SourceStatus};
     use crate::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 
     use super::*;
@@ -173,7 +167,6 @@ mod tests {
         .execute(&MergePlan::default(), &[], &mut ids, &["/a.pdf".into()]);
         assert_eq!(result.plan.len(), 3);
         assert_eq!(result.sources[0].page_count, 3);
-        assert_eq!(result.sources[0].grouping, Grouping::Grouped);
         assert_eq!(result.sources[0].path, PathBuf::from("/a.pdf"));
         assert_eq!(result.sources[0].status, SourceStatus::Ready);
         assert_eq!(result.sources[0].page_sizes, vec![PageSize::A4_PORTRAIT; 3]);
@@ -218,7 +211,6 @@ mod tests {
         assert_eq!(result.plan.len(), 1);
         assert_eq!(result.sources[0].kind, SourceKind::Image);
         assert_eq!(result.sources[0].page_count, 1);
-        assert_eq!(result.sources[0].grouping, Grouping::Grouped);
         assert_eq!(result.sources[0].status, SourceStatus::Ready);
         // An image is laid out at the plan's dominant page size, so it carries
         // no page size of its own.
