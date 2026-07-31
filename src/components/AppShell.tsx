@@ -44,6 +44,12 @@ export function AppShell() {
    */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A modal owns the keyboard while it is open; nothing here may reach the
+      // document behind it.
+      if (useUiStore.getState().modalOpen) {
+        return;
+      }
+
       // A card drag consumes its own keys; nothing already handled is a shortcut.
       if (event.defaultPrevented) {
         return;
