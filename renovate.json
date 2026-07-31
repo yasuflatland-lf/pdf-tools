@@ -3,6 +3,7 @@
   "extends": ["config:recommended"],
   "dependencyDashboard": true,
   "semanticCommits": "enabled",
+  "minimumReleaseAge": "3 days",
   "packageRules": [
     {
       "description": "Group Rust dependency updates",
