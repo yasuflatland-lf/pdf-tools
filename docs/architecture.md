@@ -198,8 +198,9 @@ breaks the TypeScript build rather than failing silently at runtime.
 
 An image page is fitted to the **dominant page size**: the most frequent size among the plan's
 PDF-backed slots, ties broken by first appearance in the plan, A4 portrait when the plan has no
-PDF pages at all. Sizes within 1 pt count as equal. The aspect ratio is preserved and the
-remaining area is white. An animated GIF contributes its first frame only.
+PDF pages at all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice,
+so the classification is independent of the order pages were added in. The aspect ratio is
+preserved and the remaining area is white. An animated GIF contributes its first frame only.
 
 ## Error handling
 
