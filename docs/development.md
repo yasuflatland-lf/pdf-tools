@@ -116,6 +116,11 @@ Each layer is tested at the level where its mistakes actually live:
   from a passing coverage report. `CODECOV_TOKEN` is a repository secret, so it is unavailable to
   pull requests from forks — such a run fails on the upload step and needs a maintainer to re-run
   it from a branch in this repository.
+- **Dependency updates** are proposed by Renovate (`renovate.json`), grouped per manager. A
+  release must be **at least three days old** before Renovate offers it (`minimumReleaseAge`), so
+  a version pulled from its registry shortly after publication — a broken or compromised one —
+  never reaches a branch here. Renovate's `internalChecksFilter` defaults to `strict`, so a
+  too-young release is held back rather than raised as a pending pull request.
 - **Release** (`.github/workflows/release.yml`) triggers on a `v*` tag push, or manually against
   an existing tag. It builds a macOS universal bundle and a Windows bundle with `tauri-action`,
   and uploads them to the matching GitHub release. Release notes are authored by hand; the
