@@ -126,6 +126,7 @@ mod tests {
                     id: SlotId(slot_id as u64),
                     source: SourceId(source_id),
                     page: PageIndex(page_index),
+                    rotation: Default::default(),
                 })
                 .collect(),
         )
@@ -187,6 +188,7 @@ mod tests {
             id: SlotId(1),
             source: SourceId(99),
             page: PageIndex(0),
+            rotation: Default::default(),
         };
 
         let document = MergeDocument::new(MergePlan::new(vec![orphan]), Vec::new());

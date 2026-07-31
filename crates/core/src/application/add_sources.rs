@@ -47,6 +47,7 @@ impl AddSources<'_> {
                             id: ids.next_slot(),
                             source: source_id,
                             page: PageIndex(page),
+                            rotation: Default::default(),
                         }));
                         SourceFile {
                             id: source_id,
@@ -97,6 +98,7 @@ impl AddSources<'_> {
                             id: ids.next_slot(),
                             source: source_id,
                             page: PageIndex(0),
+                            rotation: Default::default(),
                         });
                         SourceFile {
                             id: source_id,
@@ -342,6 +344,7 @@ mod tests {
             id: SlotId(99),
             source: SourceId(42),
             page: PageIndex(7),
+            rotation: Default::default(),
         };
         let plan = MergePlan::new(vec![existing.clone()]);
         let document = MergeDocument::new(

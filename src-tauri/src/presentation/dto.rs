@@ -271,6 +271,7 @@ mod tests {
             id: pdf_tools_core::domain::ids::SlotId(3),
             source: SourceId(7),
             page: pdf_tools_core::domain::ids::PageIndex(1),
+            rotation: Default::default(),
         };
         let value = serde_json::to_value(PageSlotDto::from(&slot)).unwrap();
         assert_eq!(

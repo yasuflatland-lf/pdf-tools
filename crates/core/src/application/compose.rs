@@ -150,6 +150,7 @@ mod tests {
             id: SlotId(id),
             source: SourceId(source),
             page: PageIndex(page),
+            rotation: Default::default(),
         }
     }
 
