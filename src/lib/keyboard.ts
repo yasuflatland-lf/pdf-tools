@@ -9,6 +9,8 @@ export type ShortcutAction =
   | "clear-selection"
   | "undo"
   | "redo"
+  | "rotate-left"
+  | "rotate-right"
   | "focus-previous"
   | "focus-next"
   | "focus-row-previous"
@@ -63,6 +65,12 @@ export function resolveShortcut(event: ShortcutEvent): ShortcutAction | null {
     }
     if (key === "z") {
       return event.shiftKey === true ? "redo" : "undo";
+    }
+    if (key === "[") {
+      return "rotate-left";
+    }
+    if (key === "]") {
+      return "rotate-right";
     }
     return null;
   }

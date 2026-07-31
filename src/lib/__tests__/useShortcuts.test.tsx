@@ -1,6 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { useShortcuts } from "../useShortcuts";
 
@@ -123,5 +124,28 @@ describe("useShortcuts", () => {
     act(() => window.dispatchEvent(alreadyHandled));
 
     expect(undo).not.toHaveBeenCalled();
+  });
+
+  it("rotates the current selection from modifier bracket shortcuts", async () => {
+    const rotate = vi.spyOn(usePlanStore.getState(), "rotate").mockResolvedValue();
+    await renderClients(
+      vi.fn(() => true),
+      vi.fn(() => true),
+    );
+
+    useUiStore.setState({ selectedSlots: new Set([2, 4]) });
+    const right = shortcut({ ctrlKey: true, key: "]" });
+    act(() => window.dispatchEvent(right));
+
+    useUiStore.setState({ selectedSlots: new Set([9]) });
+    const left = shortcut({ ctrlKey: true, key: "[" });
+    act(() => window.dispatchEvent(left));
+
+    expect(rotate.mock.calls).toEqual([
+      [[2, 4], 1],
+      [[9], -1],
+    ]);
+    expect(right.defaultPrevented).toBe(true);
+    expect(left.defaultPrevented).toBe(true);
   });
 });

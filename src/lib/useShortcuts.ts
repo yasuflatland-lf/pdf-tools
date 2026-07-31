@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ShortcutAction } from "./keyboard";
 import { resolveShortcut } from "./keyboard";
+import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 
 /** Returns true when the handler acted, which is what suppresses the default. */
@@ -21,6 +22,21 @@ function handleKeyDown(event: KeyboardEvent): void {
 
   const action = resolveShortcut(event);
   if (action === null) {
+    return;
+  }
+
+  if (action === "rotate-left" || action === "rotate-right") {
+    const selected = [...useUiStore.getState().selectedSlots];
+    if (selected.length === 0) {
+      return;
+    }
+
+    const delta = action === "rotate-right" ? 1 : -1;
+    void usePlanStore
+      .getState()
+      .rotate(selected, delta)
+      .catch((error: unknown) => console.error("rotate failed", error));
+    event.preventDefault();
     return;
   }
 

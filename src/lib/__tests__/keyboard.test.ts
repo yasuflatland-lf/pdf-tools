@@ -17,6 +17,21 @@ describe("resolveShortcut", () => {
     expect(resolveShortcut({ key: "z", metaKey: true })).toBe("undo");
   });
 
+  it("maps modifier brackets to clockwise and counter-clockwise rotation", () => {
+    expect(resolveShortcut({ key: "]", metaKey: true })).toBe("rotate-right");
+    expect(resolveShortcut({ key: "[", metaKey: true })).toBe("rotate-left");
+    expect(resolveShortcut({ key: "]", ctrlKey: true })).toBe("rotate-right");
+    expect(resolveShortcut({ key: "[", ctrlKey: true })).toBe("rotate-left");
+  });
+
+  it("ignores rotation shortcuts while a text entry has focus", () => {
+    const input = document.createElement("input");
+    const textarea = document.createElement("textarea");
+
+    expect(resolveShortcut({ key: "]", metaKey: true, target: input })).toBeNull();
+    expect(resolveShortcut({ key: "[", ctrlKey: true, target: textarea })).toBeNull();
+  });
+
   it("ignores shortcuts while a text input has focus", () => {
     const inputElement = document.createElement("input");
 

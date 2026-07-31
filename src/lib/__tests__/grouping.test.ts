@@ -3,8 +3,8 @@ import type { PageSlotDto } from "../../bindings/PageSlotDto";
 import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { groupContiguous } from "../grouping";
 
-function slot(id: number, sourceId: number, page: number): PageSlotDto {
-  return { id, source: sourceId, page, rotation: 0 };
+function slot(id: number, sourceId: number, page: number, rotation = 0): PageSlotDto {
+  return { id, source: sourceId, page, rotation };
 }
 
 function source(id: number, grouping: SourceFileDto["grouping"]): SourceFileDto {
@@ -49,6 +49,21 @@ describe("groupContiguous", () => {
     );
 
     expect(groups.map((group) => group.slotIds)).toEqual([[1], [2], [3]]);
+  });
+
+  it("splits a mixed-rotation run and refolds it when the rotations match again", () => {
+    const mixed = [slot(1, 10, 0), slot(2, 10, 1, 1), slot(3, 10, 2)];
+
+    expect(groupContiguous(mixed, [source(10, "grouped")]).map((group) => group.slotIds)).toEqual([
+      [1],
+      [2],
+      [3],
+    ]);
+
+    const restored = mixed.map((entry) => (entry.id === 2 ? { ...entry, rotation: 0 } : entry));
+    expect(
+      groupContiguous(restored, [source(10, "grouped")]).map((group) => group.slotIds),
+    ).toEqual([[1, 2, 3]]);
   });
 
   it("creates one group per slot when the source is unknown", () => {
