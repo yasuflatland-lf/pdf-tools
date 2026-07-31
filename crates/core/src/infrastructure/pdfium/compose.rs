@@ -2,13 +2,16 @@ use super::probe::map_load_error;
 use super::PdfiumEngine;
 use crate::application::errors::{ImageError, PdfError};
 use crate::application::ports::{ComposeEntry, ComposePlan, ImageDecoder, MergeReport};
+use crate::domain::geometry::PageSize;
 use crate::infrastructure::image_decoder::ImageCrateDecoder;
+use crate::infrastructure::jpeg::{self, Passthrough};
 use image::{DynamicImage, RgbaImage};
 use pdfium_render::prelude::{
-    PdfColor, PdfPageImageObject, PdfPageObjectsCommon, PdfPagePaperSize, PdfPagePathObject,
-    PdfPoints, PdfRect,
+    PdfColor, PdfDocument, PdfPageImageObject, PdfPageObjectsCommon, PdfPagePaperSize,
+    PdfPagePathObject, PdfPoints, PdfRect,
 };
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::path::Path;
 
 /// Builds a new PDF holding the plan's entries, in plan order.
@@ -62,30 +65,13 @@ pub(super) fn compose(
                         })?;
                 }
                 ComposeEntry::Image { path, fit_to } => {
-                    let raster = ImageCrateDecoder
-                        .decode_first_frame(path)
-                        .map_err(|error| map_image_error(path, error))?;
-                    let image = RgbaImage::from_raw(raster.width, raster.height, raster.rgba)
-                        .map(DynamicImage::ImageRgba8)
-                        .ok_or_else(|| PdfError::Unreadable {
-                            path: path.clone(),
-                            reason: "decoded image buffer has invalid dimensions".into(),
-                        })?;
-
-                    let page_width = fit_to.width_pt;
-                    let page_height = fit_to.height_pt;
-                    let scale =
-                        (page_width / raster.width as f32).min(page_height / raster.height as f32);
-                    let image_width = raster.width as f32 * scale;
-                    let image_height = raster.height as f32 * scale;
-                    let image_left = (page_width - image_width) / 2.0;
-                    let image_bottom = (page_height - image_height) / 2.0;
+                    let (mut image_object, placement) = image_object(&destination, path, *fit_to)?;
 
                     let mut page = destination
                         .pages_mut()
                         .create_page_at_end(PdfPagePaperSize::Custom(
-                            PdfPoints::new(page_width),
-                            PdfPoints::new(page_height),
+                            PdfPoints::new(fit_to.width_pt),
+                            PdfPoints::new(fit_to.height_pt),
                         ))
                         .map_err(|error| image_composition_error(path, error))?;
                     let background = PdfPagePathObject::new_rect(
@@ -93,8 +79,8 @@ pub(super) fn compose(
                         PdfRect::new(
                             PdfPoints::ZERO,
                             PdfPoints::ZERO,
-                            PdfPoints::new(page_height),
-                            PdfPoints::new(page_width),
+                            PdfPoints::new(fit_to.height_pt),
+                            PdfPoints::new(fit_to.width_pt),
                         ),
                         None,
                         None,
@@ -105,15 +91,11 @@ pub(super) fn compose(
                         .add_path_object(background)
                         .map_err(|error| image_composition_error(path, error))?;
 
-                    let mut image_object = PdfPageImageObject::new_with_size(
-                        &destination,
-                        &image,
-                        PdfPoints::new(image_width),
-                        PdfPoints::new(image_height),
-                    )
-                    .map_err(|error| image_composition_error(path, error))?;
                     image_object
-                        .translate(PdfPoints::new(image_left), PdfPoints::new(image_bottom))
+                        .translate(
+                            PdfPoints::new(placement.left),
+                            PdfPoints::new(placement.bottom),
+                        )
                         .map_err(|error| image_composition_error(path, error))?;
                     page.objects_mut()
                         .add_image_object(image_object)
@@ -137,6 +119,87 @@ pub(super) fn compose(
             bytes_written,
         })
     })
+}
+
+/// Where a fitted image sits on its page, in points.
+struct Placement {
+    left: f32,
+    bottom: f32,
+    width: f32,
+    height: f32,
+}
+
+/// Scales an image's intrinsic pixel size to fit the page, preserving the aspect
+/// ratio and centring the result.
+fn place(fit_to: PageSize, width_px: u32, height_px: u32) -> Placement {
+    let scale = (fit_to.width_pt / width_px as f32).min(fit_to.height_pt / height_px as f32);
+    let width = width_px as f32 * scale;
+    let height = height_px as f32 * scale;
+
+    Placement {
+        left: (fit_to.width_pt - width) / 2.0,
+        bottom: (fit_to.height_pt - height) / 2.0,
+        width,
+        height,
+    }
+}
+
+/// Returns the file's bytes when it is a JPEG whose stream PDF can carry
+/// unchanged, and None when the image has to be decoded instead.
+///
+/// A file that cannot be read returns None rather than an error: the raster path
+/// reports missing and unreadable sources, and reporting them here as well would
+/// give one failure two different messages.
+fn passthrough_bytes(path: &Path) -> Option<Vec<u8>> {
+    let bytes = std::fs::read(path).ok()?;
+    matches!(jpeg::passthrough(&bytes), Passthrough::Eligible).then_some(bytes)
+}
+
+/// Builds the image object for one entry together with the space it occupies.
+///
+/// An eligible JPEG is handed to PDFium as its original stream, which PDFium
+/// stores as DCTDecode: no decode, no re-encode, and the bytes on disk are the
+/// bytes that came in. Everything else is decoded and embedded as a bitmap,
+/// which PDFium deflates at save time.
+fn image_object<'a>(
+    document: &PdfDocument<'a>,
+    path: &Path,
+    fit_to: PageSize,
+) -> Result<(PdfPageImageObject<'a>, Placement), PdfError> {
+    if let Some(bytes) = passthrough_bytes(path) {
+        // Only the dimensions are needed; probe reads the header, not the pixels.
+        let info = ImageCrateDecoder
+            .probe(path)
+            .map_err(|error| map_image_error(path, error))?;
+        let placement = place(fit_to, info.width_px, info.height_px);
+        // The object arrives one point square, so the scale is not optional.
+        let mut object = PdfPageImageObject::new_from_jpeg_reader(document, Cursor::new(bytes))
+            .map_err(|error| image_composition_error(path, error))?;
+        object
+            .scale(placement.width, placement.height)
+            .map_err(|error| image_composition_error(path, error))?;
+        return Ok((object, placement));
+    }
+
+    let raster = ImageCrateDecoder
+        .decode_first_frame(path)
+        .map_err(|error| map_image_error(path, error))?;
+    let placement = place(fit_to, raster.width, raster.height);
+    let image = RgbaImage::from_raw(raster.width, raster.height, raster.rgba)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or_else(|| PdfError::Unreadable {
+            path: path.to_path_buf(),
+            reason: "decoded image buffer has invalid dimensions".into(),
+        })?;
+    let object = PdfPageImageObject::new_with_size(
+        document,
+        &image,
+        PdfPoints::new(placement.width),
+        PdfPoints::new(placement.height),
+    )
+    .map_err(|error| image_composition_error(path, error))?;
+
+    Ok((object, placement))
 }
 
 fn write_error(path: &Path, reason: String) -> PdfError {
@@ -167,5 +230,32 @@ fn image_composition_error(path: &Path, error: impl std::fmt::Display) -> PdfErr
     PdfError::Unreadable {
         path: path.to_path_buf(),
         reason: format!("PDFium could not compose image: {error}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_wide_image_fills_the_page_width_and_is_centred_vertically() {
+        let placement = place(PageSize::A4_PORTRAIT, 800, 600);
+        assert!((placement.width - PageSize::A4_PORTRAIT.width_pt).abs() < 0.01);
+        assert!((placement.left - 0.0).abs() < 0.01);
+        assert!(placement.bottom > 0.0);
+    }
+
+    #[test]
+    fn a_tall_image_fills_the_page_height_and_is_centred_horizontally() {
+        let placement = place(PageSize::A4_PORTRAIT, 300, 900);
+        assert!((placement.height - PageSize::A4_PORTRAIT.height_pt).abs() < 0.01);
+        assert!((placement.bottom - 0.0).abs() < 0.01);
+        assert!(placement.left > 0.0);
+    }
+
+    #[test]
+    fn the_aspect_ratio_survives_the_fit() {
+        let placement = place(PageSize::A4_PORTRAIT, 800, 600);
+        assert!(((placement.width / placement.height) - 800.0 / 600.0).abs() < 0.001);
     }
 }

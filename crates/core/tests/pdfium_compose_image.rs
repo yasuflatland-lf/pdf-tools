@@ -5,6 +5,7 @@ use fixtures::{engine, fixture};
 use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, PdfEngine};
 use pdf_tools_core::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
+use pdfium_render::prelude::{PdfPageObjectCommon, PdfPageObjectsCommon};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -47,6 +48,99 @@ fn is_white(pixel: &[u8]) -> bool {
 fn center_pixel(image: &RasterImage) -> &[u8] {
     let offset = (((image.height / 2) * image.width + image.width / 2) * 4) as usize;
     &image.rgba[offset..offset + 4]
+}
+
+/// Reports the filter chain PDFium wrote for the first image object on page 0.
+/// Reading it back from the saved file is the only way to tell an embedded
+/// stream from a re-encoded bitmap; the compose call itself succeeds either way.
+fn image_filters(path: &std::path::Path) -> Vec<String> {
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(path, None).unwrap();
+        let pages = document.pages();
+        let page = pages.get(0).unwrap();
+        let filters = page
+            .objects()
+            .iter()
+            .find_map(|object| {
+                object.as_image_object().map(|image| {
+                    image
+                        .filters()
+                        .iter()
+                        .map(|f| f.name().to_owned())
+                        .collect()
+                })
+            })
+            .expect("the composed page should hold an image object");
+        filters
+    })
+}
+
+#[test]
+fn a_baseline_jpeg_is_embedded_as_its_original_stream() {
+    let out = temp_path("baseline-passthrough.pdf");
+    engine().compose(&image_plan("sample.jpg"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn a_progressive_jpeg_is_embedded_as_its_original_stream() {
+    let out = temp_path("progressive-passthrough.pdf");
+    engine()
+        .compose(&image_plan("progressive.jpg"), &out)
+        .unwrap();
+    assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn a_cmyk_jpeg_is_decoded_rather_than_embedded() {
+    // PDFium accepts a four-component stream and renders it with the wrong
+    // colours, so this one must not take the passthrough path.
+    let out = temp_path("cmyk-fallback.pdf");
+    engine().compose(&image_plan("cmyk.jpg"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["FlateDecode".to_owned()]);
+}
+
+#[test]
+fn a_png_is_decoded_rather_than_embedded() {
+    let out = temp_path("png-fallback.pdf");
+    engine().compose(&image_plan("sample.png"), &out).unwrap();
+    assert_eq!(image_filters(&out), vec!["FlateDecode".to_owned()]);
+}
+
+#[test]
+fn an_embedded_stream_lands_where_a_decoded_one_would() {
+    // A passthrough page that is scaled or positioned differently from the
+    // raster page would be a silent regression: it still merges, still opens,
+    // and still reports the right page count.
+    let passthrough = temp_path("bounds-jpeg.pdf");
+    let raster = temp_path("bounds-png.pdf");
+    engine()
+        .compose(&image_plan("sample.jpg"), &passthrough)
+        .unwrap();
+    engine()
+        .compose(&image_plan("sample.png"), &raster)
+        .unwrap();
+
+    let bounds = |path: &std::path::Path| {
+        engine().with_library(|pdfium| {
+            let document = pdfium.load_pdf_from_file(path, None).unwrap();
+            let pages = document.pages();
+            let page = pages.get(0).unwrap();
+            let rect = page
+                .objects()
+                .iter()
+                .find_map(|object| object.as_image_object().map(|i| i.bounds().unwrap()))
+                .unwrap();
+            (rect.left().value, rect.right().value)
+        })
+    };
+
+    // sample.jpg is 800x600 and sample.png is 400x400; both are wider than tall
+    // or square, so both fit to the full page width on A4 portrait.
+    let (jpeg_left, jpeg_right) = bounds(&passthrough);
+    let (png_left, png_right) = bounds(&raster);
+    assert!((jpeg_left - png_left).abs() < 0.5);
+    assert!((jpeg_right - png_right).abs() < 0.5);
 }
 
 #[test]
