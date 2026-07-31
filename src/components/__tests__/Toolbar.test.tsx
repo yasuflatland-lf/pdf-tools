@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComposeProgressDto } from "../../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../../bindings/MergeReportDto";
+import { shortcutHint } from "../../lib/keyboard";
 import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { AppShell } from "../AppShell";
@@ -82,7 +83,7 @@ async function renderShell(): Promise<HTMLElement> {
 
 function getButton(container: HTMLElement, name: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find(
-    (candidate) => candidate.textContent === name,
+    (candidate) => candidate.getAttribute("aria-label") === name || candidate.textContent === name,
   );
   if (!button) {
     throw new Error(`Button "${name}" was not found`);
@@ -201,8 +202,8 @@ describe("Toolbar", () => {
 
   it("switches between grid and list views and reports the active mode", async () => {
     const container = await renderToolbar();
-    const grid = getButton(container, "Grid");
-    const list = getButton(container, "List");
+    const grid = getButton(container, "Grid view");
+    const list = getButton(container, "List view");
 
     expect(grid.getAttribute("aria-pressed")).toBe("true");
     expect(list.getAttribute("aria-pressed")).toBe("false");
@@ -383,7 +384,9 @@ describe("Toolbar", () => {
 
     expect(mocks.compose).toHaveBeenCalledWith(outputPath);
     expect(mocks.rememberOutputDir).toHaveBeenCalledWith("/Users/me/Documents");
-    expect(getButton(container, "Merge").disabled).toBe(true);
+    // The primary button renames itself while a merge runs, so it is looked up
+    // by the label the user actually sees.
+    expect(getButton(container, "Merging…").disabled).toBe(true);
 
     await act(async () => {
       mocks.progress.handler?.({ done: 1, total: 2 });
@@ -399,11 +402,34 @@ describe("Toolbar", () => {
 
     expect(getButton(container, "Merge").disabled).toBe(false);
     expect(container.textContent).toContain("book.pdf");
-    expect(container.textContent).toContain("3 pages");
+    // The completion chip carries the file name only; page totals stay in the
+    // left-hand readout, where they describe the plan rather than the output.
+    expect(container.textContent).not.toContain("3 pages");
     expect(mocks.unlisten).toHaveBeenCalledOnce();
 
     await click(getButton(container, "Show in folder"));
     expect(mocks.revealItemInDir).toHaveBeenCalledWith(outputPath);
+  });
+
+  it("titles the completion chip's file name with the full destination path", async () => {
+    const outputPath = "/Users/me/Documents/a-rather-long-file-name-that-would-need-truncating.pdf";
+    const pending = deferred<MergeReportDto>();
+    loadOneSlot();
+    mocks.save.mockResolvedValue(outputPath);
+    mocks.compose.mockReturnValue(pending.promise);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+
+    await act(async () => {
+      pending.resolve({ page_count: 1, bytes_written: 512 });
+      await pending.promise;
+    });
+
+    const named = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.getAttribute("title") === outputPath,
+    );
+    expect(named).not.toBeUndefined();
   });
 
   it("names the failing file in a dialog and keeps the marker after it is closed", async () => {
@@ -498,5 +524,56 @@ describe("Toolbar", () => {
     });
     keyDown({ key: "Escape" });
     expect(useUiStore.getState().selectedSlots.size).toBe(0);
+  });
+
+  it("groups the view modes into one labelled control", async () => {
+    const container = await renderToolbar();
+    const group = container.querySelector('[role="group"]');
+
+    expect(group?.getAttribute("aria-label")).toBe("View mode");
+    // Both modes live inside the enclosure, which is what makes it read as a
+    // single "exactly one of these" control rather than two loose buttons.
+    expect(group?.querySelectorAll("button")).toHaveLength(2);
+    expect(getButton(container, "Grid view").getAttribute("title")).toBe("Grid view");
+  });
+
+  it("names every centre action and spells its shortcut in the tooltip", async () => {
+    const container = await renderToolbar();
+
+    expect(getButton(container, "Undo").getAttribute("title")).toBe(
+      `Undo (${shortcutHint("undo", navigator.userAgent)})`,
+    );
+    expect(getButton(container, "Redo").getAttribute("title")).toBe(
+      `Redo (${shortcutHint("redo", navigator.userAgent)})`,
+    );
+    expect(getButton(container, "Grid view").getAttribute("aria-label")).toBe("Grid view");
+    expect(getButton(container, "List view").getAttribute("aria-label")).toBe("List view");
+  });
+
+  it("locks the history buttons and renames the primary button while merging", async () => {
+    const pending = deferred<MergeReportDto>();
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0 }],
+      sources: [],
+      can_undo: true,
+      can_redo: true,
+    });
+    mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
+    mocks.compose.mockReturnValue(pending.promise);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+
+    expect(getButton(container, "Undo").disabled).toBe(true);
+    expect(getButton(container, "Redo").disabled).toBe(true);
+    expect(getButton(container, "Merging…").disabled).toBe(true);
+
+    await act(async () => {
+      pending.resolve({ page_count: 1, bytes_written: 512 });
+      await pending.promise;
+    });
+
+    expect(getButton(container, "Undo").disabled).toBe(false);
+    expect(getButton(container, "Merge").disabled).toBe(false);
   });
 });

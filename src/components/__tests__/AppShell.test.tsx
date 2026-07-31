@@ -34,7 +34,7 @@ async function renderShell(): Promise<HTMLElement> {
 
 function getButton(container: HTMLElement, name: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find(
-    (candidate) => candidate.textContent === name,
+    (candidate) => candidate.getAttribute("aria-label") === name || candidate.textContent === name,
   );
   if (!button) {
     throw new Error(`Button "${name}" was not found`);
@@ -104,13 +104,13 @@ describe("AppShell", () => {
     expect(container.querySelector('[data-view-mode="grid"]')).not.toBeNull();
     expect(container.querySelector('[data-view-mode="list"]')).toBeNull();
 
-    await click(getButton(container, "List"));
+    await click(getButton(container, "List view"));
 
     expect(container.querySelector('[data-view-mode="list"]')).not.toBeNull();
     expect(container.querySelector('[data-view-mode="grid"]')).toBeNull();
     expect(container.textContent).toContain("report.pdf");
 
-    await click(getButton(container, "Grid"));
+    await click(getButton(container, "Grid view"));
 
     expect(container.querySelector('[data-view-mode="grid"]')).not.toBeNull();
   });
