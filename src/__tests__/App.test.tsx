@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
+import type { PlanSnapshot } from "../bindings/PlanSnapshot";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 
@@ -151,7 +152,7 @@ describe("App", () => {
   });
 
   it("removes the selected slots with Delete", async () => {
-    const loaded = {
+    const loaded: PlanSnapshot = {
       slots: [
         { id: 1, source: 10, page: 0 },
         { id: 2, source: 10, page: 1 },

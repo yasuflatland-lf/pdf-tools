@@ -16,7 +16,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 const mountedRoots: Root[] = [];
 
-function source(id: number, grouping: string, pageCount: number): SourceFileDto {
+function source(id: number, grouping: SourceFileDto["grouping"], pageCount: number): SourceFileDto {
   return {
     id,
     path: `/documents/${id}.pdf`,
