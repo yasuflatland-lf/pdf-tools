@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import type { SourceStatusDto } from "../bindings/SourceStatusDto";
-import { countLabel, statusLabel } from "../lib/format";
+import { countLabel } from "../lib/format";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
+import { useThumbnail } from "./useThumbnail";
 
 interface PageListRowProps {
   cache: ThumbnailCache;
@@ -11,7 +10,6 @@ interface PageListRowProps {
   pageCount: number;
   pageNumber: number;
   slotId: number;
-  status?: SourceStatusDto;
   thumbnailWidth: number;
 }
 
@@ -23,34 +21,9 @@ export function PageListRow({
   pageCount,
   pageNumber,
   slotId,
-  status,
   thumbnailWidth,
 }: PageListRowProps) {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>();
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setThumbnailUrl(undefined);
-    setFailed(false);
-
-    void cache
-      .get(slotId, thumbnailWidth)
-      .then((url) => {
-        if (active && url) {
-          setThumbnailUrl(url);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setFailed(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [cache, slotId, thumbnailWidth]);
+  const { url: thumbnailUrl, failed } = useThumbnail(cache, slotId, thumbnailWidth);
 
   return (
     <article className="flex h-24 items-center gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
@@ -69,6 +42,11 @@ export function PageListRow({
           />
         )}
       </div>
+      {failed && (
+        <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
+          サムネイルを表示できません
+        </p>
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-slate-100" title={fileName}>
           {fileName}
@@ -77,9 +55,6 @@ export function PageListRow({
           {collapsed ? countLabel(pageCount, "page") : `Page ${pageNumber}`}
         </p>
       </div>
-      <p className="shrink-0 text-sm text-slate-400">
-        {status ? statusLabel(status) : "Unknown status"}
-      </p>
       {onToggle &&
         (collapsed ? (
           <button

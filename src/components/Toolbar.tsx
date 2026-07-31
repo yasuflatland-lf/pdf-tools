@@ -58,14 +58,14 @@ export function Toolbar() {
   const canRedo = usePlanStore((state) => state.canRedo);
   const viewMode = useUiStore((state) => state.viewMode);
   const setViewMode = useUiStore((state) => state.setViewMode);
+  const modalOpen = useUiStore((state) => state.modalOpen);
   const [isMerging, setIsMerging] = useState(false);
   const [progress, setProgress] = useState<ComposeProgressDto>({ done: 0, total: 0 });
   const [result, setResult] = useState<MergeResult | null>(null);
-  const [failure, setFailure] = useState<MergeFailure | null>(null);
   // Dismissing the dialog must not erase the failure itself: the toolbar keeps
   // its marker until the next merge, so a merge that produced nothing is never
   // mistaken for one that has not been run.
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [failure, setFailure] = useState<MergeFailure | null>(null);
 
   const performUndo = useCallback(async () => {
     try {
@@ -85,6 +85,12 @@ export function Toolbar() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A modal owns the keyboard while it is open; nothing here may reach the
+      // document behind it.
+      if (useUiStore.getState().modalOpen) {
+        return;
+      }
+
       const action = resolveShortcut(event);
       if (action !== "undo" && action !== "redo") {
         return;
@@ -121,7 +127,7 @@ export function Toolbar() {
       setProgress({ done: 0, total: 0 });
       setResult(null);
       setFailure(null);
-      setIsDialogOpen(false);
+      useUiStore.getState().setModalOpen(false);
 
       let unlisten: (() => void) | undefined;
       try {
@@ -138,7 +144,7 @@ export function Toolbar() {
         files: blamedFiles(message, usePlanStore.getState().sources),
         message,
       });
-      setIsDialogOpen(true);
+      useUiStore.getState().setModalOpen(true);
     } finally {
       setIsMerging(false);
     }
@@ -213,11 +219,11 @@ export function Toolbar() {
           Merge
         </button>
       </div>
-      {failure && isDialogOpen && (
+      {failure && modalOpen && (
         <ErrorDialog
           files={failure.files}
           message={failure.message}
-          onClose={() => setIsDialogOpen(false)}
+          onClose={() => useUiStore.getState().setModalOpen(false)}
         />
       )}
     </div>

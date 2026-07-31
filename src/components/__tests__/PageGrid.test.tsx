@@ -338,4 +338,13 @@ describe("PageGrid", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector('[aria-label="Thumbnail unavailable"]')).not.toBeNull();
   });
+
+  it("shows a visible badge when a thumbnail cannot be rendered", async () => {
+    invoke.mockRejectedValue(new Error("boom"));
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderGrid();
+
+    expect(container.textContent).toContain("サムネイルを表示できません");
+  });
 });

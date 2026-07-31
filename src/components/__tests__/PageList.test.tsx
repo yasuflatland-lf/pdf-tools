@@ -101,6 +101,12 @@ async function pressKey(target: HTMLElement, code: string): Promise<void> {
   });
 }
 
+async function pressArrow(key: string): Promise<void> {
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }));
+  });
+}
+
 function stopMeasuringElements(): void {
   for (const [name, descriptor] of measuredProperties) {
     if (descriptor) {
@@ -133,7 +139,11 @@ describe("PageList", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ expandedSources: new Set() });
+    useUiStore.setState({
+      expandedSources: new Set(),
+      modalOpen: false,
+      selectedSlots: new Set(),
+    });
     stopMeasuringElements();
     vi.restoreAllMocks();
   });
@@ -154,7 +164,6 @@ describe("PageList", () => {
     expect(container.querySelectorAll("article")).toHaveLength(1);
     expect(container.textContent).toContain("10.pdf");
     expect(container.textContent).toContain("3 pages");
-    expect(container.textContent).toContain("Ready");
   });
 
   it("expands a source into per-page rows when the UI store says so", async () => {
@@ -208,5 +217,72 @@ describe("PageList", () => {
       ["reorder", { fromStart: 0, fromEnd: 1, to: 1 }],
     ]);
     expect(usePlanStore.getState().slots.map((slot) => slot.id)).toEqual([2, 1, 3]);
+  });
+
+  it("shows a visible badge when a thumbnail cannot be rendered", async () => {
+    invoke.mockRejectedValue(new Error("boom"));
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.textContent).toContain("サムネイルを表示できません");
+  });
+
+  it("does not label every row with a status that cannot be anything but ready", async () => {
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.textContent).not.toContain("Ready");
+  });
+
+  it("moves focus and selection with the arrow keys", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    const container = await renderList();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    expect(options).toHaveLength(3);
+    await pressArrow("ArrowDown");
+    expect(options[0].getAttribute("aria-selected")).toBe("true");
+    expect(options[0]).toBe(document.activeElement);
+
+    await pressArrow("ArrowDown");
+    expect(options[1].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("treats left and right as previous and next in a single column", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    const container = await renderList();
+
+    await pressArrow("ArrowRight");
+    await pressArrow("ArrowRight");
+
+    expect(container.querySelectorAll('[role="option"]')[1]?.getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  it("does not move focus or selection while a modal is open", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    useUiStore.setState({ modalOpen: true });
+    const container = await renderList();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await pressArrow("ArrowRight");
+
+    expect(options.some((option) => option.getAttribute("aria-selected") === "true")).toBe(false);
+    expect(options.includes(document.activeElement as HTMLElement)).toBe(false);
+  });
+
+  it("lets the listbox own the option rows with no role in between", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    const container = await renderList();
+    const listbox = container.querySelector('[role="listbox"]');
+
+    expect(listbox).not.toBeNull();
+    expect(listbox?.getAttribute("aria-multiselectable")).toBe("true");
+    for (const option of container.querySelectorAll('[role="option"]')) {
+      expect(option.closest('[role="listbox"]')).toBe(listbox);
+    }
   });
 });

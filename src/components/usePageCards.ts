@@ -12,6 +12,7 @@ import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
 import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
+import { nextFocusIndex, resolveShortcut } from "../lib/keyboard";
 import { rasterizeSlot, reorder } from "../lib/tauri-api";
 import { createThumbnailCache, type ThumbnailCache } from "../lib/thumbnail-cache";
 import { usePlanStore } from "../store/plan-store";
@@ -121,6 +122,61 @@ export function usePageCards(): {
   };
 
   return { cache, cards, handleDragEnd, sensors };
+}
+
+interface CardFocusOptions {
+  cards: DisplayCard[];
+  columnCount: number;
+  scrollToIndex: (rowIndex: number) => void;
+}
+
+/**
+ * Arrow navigation over the cards. It lives here rather than in a view because
+ * both views need it and only the column count differs -- the list is a grid one
+ * column wide. The selection follows the focus so that Delete always acts on the
+ * card the user is looking at.
+ */
+export function useCardFocus({
+  cards,
+  columnCount,
+  scrollToIndex,
+}: CardFocusOptions): number | null {
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // A modal owns the keyboard while it is open; nothing here may reach the
+      // document behind it.
+      if (useUiStore.getState().modalOpen) {
+        return;
+      }
+
+      // dnd-kit's keyboard sensor steers a picked-up card with the same arrows
+      // and calls `preventDefault` while it does; moving the focus as well would
+      // drag one card and select another.
+      if (event.defaultPrevented) {
+        return;
+      }
+
+      const action = resolveShortcut(event);
+      const current = focusedIndex !== null && focusedIndex < cards.length ? focusedIndex : -1;
+      const next =
+        action === null ? null : nextFocusIndex(action, current, cards.length, columnCount);
+      if (next === null) {
+        return;
+      }
+
+      event.preventDefault();
+      setFocusedIndex(next);
+      scrollToIndex(Math.floor(next / columnCount));
+      useUiStore.getState().selectSlots(cards[next].slotIds);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cards, columnCount, focusedIndex, scrollToIndex]);
+
+  return focusedIndex;
 }
 
 interface CardRowsOptions {

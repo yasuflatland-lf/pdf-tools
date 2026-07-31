@@ -96,4 +96,13 @@ describe("createUiStore", () => {
     store.getState().pruneSelected([20, 30]);
     expect(store.getState().selectedSlots).toEqual(new Set([20]));
   });
+
+  it("starts with no modal open and tracks the flag", () => {
+    const store = createUiStore();
+    expect(store.getState().modalOpen).toBe(false);
+    store.getState().setModalOpen(true);
+    expect(store.getState().modalOpen).toBe(true);
+    store.getState().setModalOpen(false);
+    expect(store.getState().modalOpen).toBe(false);
+  });
 });
