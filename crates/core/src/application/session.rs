@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::application::add_sources::AddSources;
 use crate::application::ports::{ImageDecoder, PdfEngine};
-use crate::domain::grouping::can_regroup;
+use crate::domain::document::MergeDocument;
 use crate::domain::ids::{IdSequence, SlotId, SourceId};
 use crate::domain::operations;
 use crate::domain::plan::MergePlan;
@@ -12,26 +12,18 @@ use crate::domain::source::SourceFile;
 const HISTORY_LIMIT: usize = 100;
 
 #[derive(Debug)]
-struct Snapshot {
-    plan: MergePlan,
-    sources: Vec<SourceFile>,
-}
-
-#[derive(Debug)]
 pub struct PlanSession {
-    plan: MergePlan,
-    sources: Vec<SourceFile>,
+    document: MergeDocument,
     // IDs are deliberately not snapshotted so they remain monotonic across undo.
     ids: IdSequence,
-    undo: Vec<Snapshot>,
-    redo: Vec<Snapshot>,
+    undo: Vec<MergeDocument>,
+    redo: Vec<MergeDocument>,
 }
 
 impl PlanSession {
     pub fn new() -> Self {
         Self {
-            plan: MergePlan::default(),
-            sources: Vec::new(),
+            document: MergeDocument::default(),
             ids: IdSequence::default(),
             undo: Vec::new(),
             redo: Vec::new(),
@@ -39,18 +31,22 @@ impl PlanSession {
     }
 
     pub fn plan(&self) -> &MergePlan {
-        &self.plan
+        self.document.plan()
     }
 
     pub fn sources(&self) -> &[SourceFile] {
-        &self.sources
+        self.document.sources()
+    }
+
+    pub fn document(&self) -> &MergeDocument {
+        &self.document
     }
 
     /// Whether the source's pages currently form one ascending run, and so are
     /// drawn as a single card. Derived from the plan on every call: the plan is
     /// the only thing that decides it.
     pub fn is_grouped(&self, source: SourceId) -> bool {
-        can_regroup(&self.plan, source)
+        self.document.is_grouped(source)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -68,10 +64,7 @@ impl PlanSession {
         paths: &[PathBuf],
     ) {
         self.begin_change();
-        let result =
-            AddSources { pdf, images }.execute(&self.plan, &self.sources, &mut self.ids, paths);
-        self.plan = result.plan;
-        self.sources = result.sources;
+        self.document = AddSources { pdf, images }.execute(&self.document, &mut self.ids, paths);
         self.finish_change();
     }
 
@@ -80,26 +73,30 @@ impl PlanSession {
     pub fn insert_at(&mut self, at: usize, slot_ids: &[SlotId]) {
         self.begin_change();
         let slots = self
-            .plan
+            .document
+            .plan()
             .slots()
             .iter()
             .filter(|slot| slot_ids.contains(&slot.id))
             .cloned()
             .collect::<Vec<_>>();
-        let remaining = operations::remove(&self.plan, slot_ids);
-        self.plan = operations::insert_at(&remaining, at, &slots);
+        let remaining = operations::remove(self.document.plan(), slot_ids);
+        let plan = operations::insert_at(&remaining, at, &slots);
+        self.document = self.document.with_plan(plan);
         self.finish_change();
     }
 
     pub fn reorder(&mut self, from: Range<usize>, to: usize) {
         self.begin_change();
-        self.plan = operations::reorder(&self.plan, from, to);
+        let plan = operations::reorder(self.document.plan(), from, to);
+        self.document = self.document.with_plan(plan);
         self.finish_change();
     }
 
     pub fn remove(&mut self, ids: &[SlotId]) {
         self.begin_change();
-        self.plan = operations::remove(&self.plan, ids);
+        let plan = operations::remove(self.document.plan(), ids);
+        self.document = self.document.with_plan(plan);
         self.finish_change();
     }
 
@@ -140,27 +137,35 @@ impl PlanSession {
             .undo
             .pop()
             .expect("begin_change must precede finish_change");
-        self.sources.retain(|source| {
-            let owned_before = previous
-                .plan
-                .slots()
-                .iter()
-                .any(|slot| slot.source == source.id);
-            let owns_now = self
-                .plan
-                .slots()
-                .iter()
-                .any(|slot| slot.source == source.id);
+        let sources = self
+            .document
+            .sources()
+            .iter()
+            .filter(|source| {
+                let owned_before = previous
+                    .plan()
+                    .slots()
+                    .iter()
+                    .any(|slot| slot.source == source.id);
+                let owns_now = self
+                    .document
+                    .plan()
+                    .slots()
+                    .iter()
+                    .any(|slot| slot.source == source.id);
 
-            // A source that never owned a slot represents an encrypted or
-            // unreadable file that the UI must continue to show.
-            !owned_before || owns_now
-        });
+                // A source that never owned a slot represents an encrypted or
+                // unreadable file that the UI must continue to show.
+                !owned_before || owns_now
+            })
+            .cloned()
+            .collect();
+        self.document = MergeDocument::new(self.document.plan().clone(), sources);
 
         // Sources are compared too: adding an encrypted or unreadable file
         // appends a zero-page source without contributing a slot, and undoing
         // that has to take its error card away again.
-        if self.plan == previous.plan && self.sources == previous.sources {
+        if self.document == previous {
             return;
         }
 
@@ -168,16 +173,12 @@ impl PlanSession {
         self.redo.clear();
     }
 
-    fn snapshot(&self) -> Snapshot {
-        Snapshot {
-            plan: self.plan.clone(),
-            sources: self.sources.clone(),
-        }
+    fn snapshot(&self) -> MergeDocument {
+        self.document.clone()
     }
 
-    fn install(&mut self, snapshot: Snapshot) {
-        self.plan = snapshot.plan;
-        self.sources = snapshot.sources;
+    fn install(&mut self, snapshot: MergeDocument) {
+        self.document = snapshot;
     }
 }
 
@@ -187,7 +188,7 @@ impl Default for PlanSession {
     }
 }
 
-fn push_bounded(stack: &mut Vec<Snapshot>, snapshot: Snapshot) {
+fn push_bounded(stack: &mut Vec<MergeDocument>, snapshot: MergeDocument) {
     // `>=` rather than `==`: `begin_change` pushes unbounded so that
     // `finish_change` can take the entry back, so a command that panics in
     // between leaves the stack one past the limit rather than exactly on it.

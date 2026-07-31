@@ -2,20 +2,15 @@ use std::path::{Path, PathBuf};
 
 use crate::application::errors::PdfError;
 use crate::application::ports::{ImageDecoder, PdfEngine};
+use crate::domain::document::MergeDocument;
 use crate::domain::ids::{IdSequence, PageIndex};
 use crate::domain::operations::insert_at;
-use crate::domain::plan::{MergePlan, PageSlot};
+use crate::domain::plan::PageSlot;
 use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
 
 pub struct AddSources<'a> {
     pub pdf: &'a dyn PdfEngine,
     pub images: &'a dyn ImageDecoder,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddSourcesResult {
-    pub plan: MergePlan,
-    pub sources: Vec<SourceFile>,
 }
 
 impl AddSources<'_> {
@@ -24,12 +19,11 @@ impl AddSources<'_> {
     /// contribute no slots, so one bad file cannot block the rest.
     pub fn execute(
         &self,
-        plan: &MergePlan,
-        sources: &[SourceFile],
+        document: &MergeDocument,
         ids: &mut IdSequence,
         paths: &[PathBuf],
-    ) -> AddSourcesResult {
-        let mut result_sources = sources.to_vec();
+    ) -> MergeDocument {
+        let mut result_sources = document.sources().to_vec();
         let mut new_slots = Vec::new();
 
         for path in paths {
@@ -114,10 +108,8 @@ impl AddSources<'_> {
             result_sources.push(source);
         }
 
-        AddSourcesResult {
-            plan: insert_at(plan, plan.len(), &new_slots),
-            sources: result_sources,
-        }
+        let plan = insert_at(document.plan(), document.plan().len(), &new_slots);
+        MergeDocument::new(plan, result_sources)
     }
 }
 
@@ -164,23 +156,26 @@ mod tests {
             pdf: &pdf,
             images: &images,
         }
-        .execute(&MergePlan::default(), &[], &mut ids, &["/a.pdf".into()]);
-        assert_eq!(result.plan.len(), 3);
-        assert_eq!(result.sources[0].page_count, 3);
-        assert_eq!(result.sources[0].path, PathBuf::from("/a.pdf"));
-        assert_eq!(result.sources[0].status, SourceStatus::Ready);
-        assert_eq!(result.sources[0].page_sizes, vec![PageSize::A4_PORTRAIT; 3]);
+        .execute(&MergeDocument::default(), &mut ids, &["/a.pdf".into()]);
+        assert_eq!(result.plan().len(), 3);
+        assert_eq!(result.sources()[0].page_count, 3);
+        assert_eq!(result.sources()[0].path, PathBuf::from("/a.pdf"));
+        assert_eq!(result.sources()[0].status, SourceStatus::Ready);
+        assert_eq!(
+            result.sources()[0].page_sizes,
+            vec![PageSize::A4_PORTRAIT; 3]
+        );
 
         // Every slot must point back at the source it came from, in page order.
-        let source_id = result.sources[0].id;
+        let source_id = result.sources()[0].id;
         assert!(result
-            .plan
+            .plan()
             .slots()
             .iter()
             .all(|slot| slot.source == source_id));
         assert_eq!(
             result
-                .plan
+                .plan()
                 .slots()
                 .iter()
                 .map(|slot| slot.page)
@@ -203,20 +198,19 @@ mod tests {
             images: &images,
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             &mut IdSequence::default(),
             &["/p.png".into()],
         );
-        assert_eq!(result.plan.len(), 1);
-        assert_eq!(result.sources[0].kind, SourceKind::Image);
-        assert_eq!(result.sources[0].page_count, 1);
-        assert_eq!(result.sources[0].status, SourceStatus::Ready);
+        assert_eq!(result.plan().len(), 1);
+        assert_eq!(result.sources()[0].kind, SourceKind::Image);
+        assert_eq!(result.sources()[0].page_count, 1);
+        assert_eq!(result.sources()[0].status, SourceStatus::Ready);
         // An image is laid out at the plan's dominant page size, so it carries
         // no page size of its own.
-        assert!(result.sources[0].page_sizes.is_empty());
-        assert_eq!(result.plan.slots()[0].source, result.sources[0].id);
-        assert_eq!(result.plan.slots()[0].page, PageIndex(0));
+        assert!(result.sources()[0].page_sizes.is_empty());
+        assert_eq!(result.plan().slots()[0].source, result.sources()[0].id);
+        assert_eq!(result.plan().slots()[0].page, PageIndex(0));
     }
 
     #[test]
@@ -232,13 +226,12 @@ mod tests {
             images: &FakeImageDecoder::new(),
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             &mut IdSequence::default(),
             &["/locked.pdf".into()],
         );
-        assert_eq!(result.plan.len(), 0);
-        assert_eq!(result.sources[0].status, SourceStatus::Encrypted);
+        assert_eq!(result.plan().len(), 0);
+        assert_eq!(result.sources()[0].status, SourceStatus::Encrypted);
     }
 
     #[test]
@@ -257,25 +250,24 @@ mod tests {
             images: &FakeImageDecoder::new(),
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             &mut IdSequence::default(),
             &["/bad.pdf".into(), "/good.pdf".into()],
         );
-        assert_eq!(result.plan.len(), 2); // only the good file contributed
-        assert_eq!(result.sources.len(), 2); // but both are recorded
+        assert_eq!(result.plan().len(), 2); // only the good file contributed
+        assert_eq!(result.sources().len(), 2); // but both are recorded
 
         // Sources keep the input order, and only the good one owns slots.
-        assert_eq!(result.sources[0].path, PathBuf::from("/bad.pdf"));
+        assert_eq!(result.sources()[0].path, PathBuf::from("/bad.pdf"));
         assert!(matches!(
-            result.sources[0].status,
+            result.sources()[0].status,
             SourceStatus::Unreadable { .. }
         ));
-        assert_eq!(result.sources[1].path, PathBuf::from("/good.pdf"));
-        assert_eq!(result.sources[1].status, SourceStatus::Ready);
-        let good_id = result.sources[1].id;
+        assert_eq!(result.sources()[1].path, PathBuf::from("/good.pdf"));
+        assert_eq!(result.sources()[1].status, SourceStatus::Ready);
+        let good_id = result.sources()[1].id;
         assert!(result
-            .plan
+            .plan()
             .slots()
             .iter()
             .all(|slot| slot.source == good_id));
@@ -288,12 +280,11 @@ mod tests {
             images: &FakeImageDecoder::new(),
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             &mut IdSequence::default(),
             &["/notes.txt".into()],
         );
-        assert_eq!(result.sources.len(), 0);
+        assert_eq!(result.sources().len(), 0);
     }
 
     #[test]
@@ -304,20 +295,31 @@ mod tests {
             page: PageIndex(7),
         };
         let plan = MergePlan::new(vec![existing.clone()]);
+        let document = MergeDocument::new(
+            plan,
+            vec![SourceFile {
+                id: SourceId(42),
+                path: "/existing.pdf".into(),
+                kind: SourceKind::Pdf,
+                page_count: 8,
+                page_sizes: vec![PageSize::A4_PORTRAIT; 8],
+                status: SourceStatus::Ready,
+            }],
+        );
         let pdf = FakePdfEngine::new().with_document("/new.pdf", doc(2));
         let result = AddSources {
             pdf: &pdf,
             images: &FakeImageDecoder::new(),
         }
-        .execute(&plan, &[], &mut IdSequence::default(), &["/new.pdf".into()]);
+        .execute(&document, &mut IdSequence::default(), &["/new.pdf".into()]);
 
-        assert_eq!(result.plan.len(), 3);
-        assert_eq!(result.plan.slots()[0], existing);
-        assert_eq!(result.plan.slots()[1].page, PageIndex(0));
-        assert_eq!(result.plan.slots()[2].page, PageIndex(1));
-        assert_ne!(result.plan.slots()[1].id, result.plan.slots()[2].id);
-        assert_ne!(result.plan.slots()[1].id, existing.id);
-        assert_ne!(result.plan.slots()[2].id, existing.id);
+        assert_eq!(result.plan().len(), 3);
+        assert_eq!(result.plan().slots()[0], existing);
+        assert_eq!(result.plan().slots()[1].page, PageIndex(0));
+        assert_eq!(result.plan().slots()[2].page, PageIndex(1));
+        assert_ne!(result.plan().slots()[1].id, result.plan().slots()[2].id);
+        assert_ne!(result.plan().slots()[1].id, existing.id);
+        assert_ne!(result.plan().slots()[2].id, existing.id);
     }
 
     #[test]
@@ -330,20 +332,19 @@ mod tests {
             images: &FakeImageDecoder::new(),
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             &mut IdSequence::default(),
             &["/lower.pdf".into(), "/UPPER.PDF".into()],
         );
 
-        assert_eq!(result.sources.len(), 2);
-        assert_eq!(result.plan.len(), 2);
+        assert_eq!(result.sources().len(), 2);
+        assert_eq!(result.plan().len(), 2);
         assert!(result
-            .sources
+            .sources()
             .iter()
             .all(|source| source.kind == SourceKind::Pdf));
         // Each recorded source draws its own id from the sequence.
-        assert_ne!(result.sources[0].id, result.sources[1].id);
+        assert_ne!(result.sources()[0].id, result.sources()[1].id);
     }
 
     #[test]
@@ -360,16 +361,15 @@ mod tests {
             images: &images,
         }
         .execute(
-            &MergePlan::default(),
-            &[],
+            &MergeDocument::default(),
             &mut IdSequence::default(),
             &["/broken.gif".into()],
         );
 
-        assert_eq!(result.sources.len(), 1);
-        assert_eq!(result.plan.len(), 0);
+        assert_eq!(result.sources().len(), 1);
+        assert_eq!(result.plan().len(), 0);
         assert!(matches!(
-            result.sources[0].status,
+            result.sources()[0].status,
             SourceStatus::Unreadable { .. }
         ));
     }
