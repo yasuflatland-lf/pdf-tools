@@ -46,7 +46,7 @@ mod tests {
     use super::*;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
     use crate::domain::plan::PageSlot;
-    use crate::domain::source::{Grouping, SourceStatus};
+    use crate::domain::source::SourceStatus;
 
     const A4: PageSize = PageSize::A4_PORTRAIT;
     const LETTER: PageSize = PageSize {
@@ -73,7 +73,6 @@ mod tests {
             id: SourceId(id),
             path: PathBuf::new(),
             kind: SourceKind::Pdf,
-            grouping: Grouping::Grouped,
             page_count: page_sizes.len() as u32,
             page_sizes,
             status: SourceStatus::Ready,
@@ -87,7 +86,6 @@ mod tests {
             id: SourceId(id),
             path: PathBuf::new(),
             kind: SourceKind::Image,
-            grouping: Grouping::Ungrouped,
             page_count: 1,
             page_sizes: vec![LETTER],
             status: SourceStatus::Ready,

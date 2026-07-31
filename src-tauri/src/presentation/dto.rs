@@ -1,7 +1,7 @@
 use pdf_tools_core::application::ports::MergeReport;
 use pdf_tools_core::application::session::PlanSession;
 use pdf_tools_core::domain::plan::PageSlot;
-use pdf_tools_core::domain::source::{Grouping, SourceFile, SourceKind, SourceStatus};
+use pdf_tools_core::domain::source::{SourceFile, SourceKind, SourceStatus};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -98,7 +98,18 @@ impl PlanSnapshot {
                 .iter()
                 .map(PageSlotDto::from)
                 .collect(),
-            sources: session.sources().iter().map(SourceFileDto::from).collect(),
+            sources: session
+                .sources()
+                .iter()
+                .map(|source| {
+                    let grouping = if session.is_grouped(source.id) {
+                        GroupingDto::Grouped
+                    } else {
+                        GroupingDto::Ungrouped
+                    };
+                    SourceFileDto::project(source, grouping)
+                })
+                .collect(),
             can_undo: session.can_undo(),
             can_redo: session.can_redo(),
         }
@@ -115,8 +126,8 @@ impl From<&PageSlot> for PageSlotDto {
     }
 }
 
-impl From<&SourceFile> for SourceFileDto {
-    fn from(source: &SourceFile) -> Self {
+impl SourceFileDto {
+    fn project(source: &SourceFile, grouping: GroupingDto) -> Self {
         let path = source.path.to_string_lossy().into_owned();
         let file_name = source
             .path
@@ -132,10 +143,7 @@ impl From<&SourceFile> for SourceFileDto {
                 SourceKind::Pdf => SourceKindDto::Pdf,
                 SourceKind::Image => SourceKindDto::Image,
             },
-            grouping: match source.grouping {
-                Grouping::Grouped => GroupingDto::Grouped,
-                Grouping::Ungrouped => GroupingDto::Ungrouped,
-            },
+            grouping,
             page_count: source.page_count,
             status: SourceStatusDto::from(&source.status),
         }
@@ -176,7 +184,6 @@ mod tests {
             id: SourceId(7),
             path: PathBuf::from(path),
             kind,
-            grouping: Grouping::Ungrouped,
             page_count: 2,
             page_sizes: Vec::new(),
             status,
@@ -185,11 +192,14 @@ mod tests {
 
     #[test]
     fn a_source_is_projected_onto_the_wire_contract() {
-        let dto = SourceFileDto::from(&source(
-            "/deep/dir/invoice.pdf",
-            SourceKind::Pdf,
-            SourceStatus::Ready,
-        ));
+        let dto = SourceFileDto::project(
+            &source(
+                "/deep/dir/invoice.pdf",
+                SourceKind::Pdf,
+                SourceStatus::Ready,
+            ),
+            GroupingDto::Ungrouped,
+        );
 
         assert_eq!(dto.id, 7);
         assert_eq!(dto.path, "/deep/dir/invoice.pdf");
@@ -206,7 +216,10 @@ mod tests {
 
     #[test]
     fn an_image_source_is_labelled_image() {
-        let dto = SourceFileDto::from(&source("/p.png", SourceKind::Image, SourceStatus::Ready));
+        let dto = SourceFileDto::project(
+            &source("/p.png", SourceKind::Image, SourceStatus::Ready),
+            GroupingDto::Grouped,
+        );
         assert_eq!(dto.kind, SourceKindDto::Image);
         assert_eq!(dto.file_name, "p.png");
     }

@@ -105,7 +105,7 @@ mod tests {
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
     use crate::domain::plan::PageSlot;
-    use crate::domain::source::{Grouping, SourceKind, SourceStatus};
+    use crate::domain::source::{SourceKind, SourceStatus};
     use crate::infrastructure::fake_engine::FakePdfEngine;
 
     const LETTER: PageSize = PageSize {
@@ -161,7 +161,6 @@ mod tests {
             id: SourceId(id),
             path,
             kind: SourceKind::Pdf,
-            grouping: Grouping::Grouped,
             page_count: page_sizes.len() as u32,
             page_sizes,
             status: SourceStatus::Ready,
@@ -173,7 +172,6 @@ mod tests {
             id: SourceId(id),
             path,
             kind: SourceKind::Image,
-            grouping: Grouping::Ungrouped,
             page_count: 1,
             page_sizes: Vec::new(),
             status: SourceStatus::Ready,

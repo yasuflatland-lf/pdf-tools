@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use crate::application::add_sources::AddSources;
 use crate::application::ports::{ImageDecoder, PdfEngine};
-use crate::domain::grouping::reconcile_grouping;
-use crate::domain::ids::{IdSequence, SlotId};
+use crate::domain::grouping::can_regroup;
+use crate::domain::ids::{IdSequence, SlotId, SourceId};
 use crate::domain::operations;
 use crate::domain::plan::MergePlan;
 use crate::domain::source::SourceFile;
@@ -44,6 +44,13 @@ impl PlanSession {
 
     pub fn sources(&self) -> &[SourceFile] {
         &self.sources
+    }
+
+    /// Whether the source's pages currently form one ascending run, and so are
+    /// drawn as a single card. Derived from the plan on every call: the plan is
+    /// the only thing that decides it.
+    pub fn is_grouped(&self, source: SourceId) -> bool {
+        can_regroup(&self.plan, source)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -125,7 +132,6 @@ impl PlanSession {
     }
 
     fn finish_change(&mut self, previous_plan: &MergePlan) {
-        reconcile_grouping(&self.plan, &mut self.sources);
         self.sources.retain(|source| {
             let owned_before = previous_plan
                 .slots()
@@ -177,7 +183,7 @@ mod tests {
     use crate::application::errors::PdfError;
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::SlotId;
-    use crate::domain::source::{DocumentInfo, Grouping, ImageInfo, SourceStatus};
+    use crate::domain::source::{DocumentInfo, ImageInfo, SourceStatus};
     use crate::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 
     fn document(page_count: u32) -> DocumentInfo {
@@ -255,6 +261,7 @@ mod tests {
     #[test]
     fn undo_restores_grouping_state_as_well_as_the_plan() {
         let mut s = session_with_pdf(3);
+        let source_id = s.sources()[0].id;
         let images = FakeImageDecoder::new().with_image(
             "/image.png",
             ImageInfo {
@@ -266,9 +273,9 @@ mod tests {
         let image_slot = s.plan().slots().last().expect("image slot").id;
 
         s.insert_at(1, &[image_slot]);
-        assert_eq!(s.sources()[0].grouping, Grouping::Ungrouped);
+        assert!(!s.is_grouped(source_id));
         s.undo();
-        assert_eq!(s.sources()[0].grouping, Grouping::Grouped);
+        assert!(s.is_grouped(source_id));
     }
 
     #[test]
