@@ -32,12 +32,23 @@ impl AppState {
     /// Returns exclusive access to the plan session.
     ///
     /// The fields are crate-private, so integration tests -- compiled as
-    /// separate crates -- reach the state through these accessors. A poisoned
-    /// lock is recovered from rather than propagated.
+    /// separate crates -- reach the state through these accessors.
+    ///
+    /// A poisoned lock is recovered from rather than propagated. A panicking
+    /// command cannot leave the session inconsistent: every mutation replaces
+    /// whole values between `begin_change` and `finish_change`, so the worst a
+    /// panic leaves behind is one undo entry that restores the same state.
+    /// Propagating instead would fail every later command permanently, and the
+    /// only recovery would be restarting the app, which discards the document
+    /// the user has assembled.
     pub fn session(&self) -> MutexGuard<'_, PlanSession> {
-        self.session
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.session.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!(
+                "the plan session lock was poisoned by a panicking command; \
+                 recovering the document as it stood before the panic"
+            );
+            poisoned.into_inner()
+        })
     }
 
     pub fn pdf(&self) -> &dyn PdfEngine {
