@@ -40,7 +40,7 @@ flowchart TB
     end
     subgraph application["application / crates/core"]
         uc["AddSources, Compose,<br>PlanSession"]
-        ports["Ports:<br>PdfEngine, ImageDecoder"]
+        ports["Ports:<br>PdfEngine, ImageDecoder, DirectoryWalker"]
     end
     subgraph domain["domain / crates/core"]
         model["MergeDocument, MergePlan,<br>PageSlot, SourceFile, PageSize"]
@@ -70,9 +70,11 @@ infrastructure → domain. Nothing flows back. Concretely:
   property-testable with no fixtures.
 - **`application` owns the use cases and the ports.** `AddSources` probes new files and appends
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
-  holds the current document and its undo/redo stacks.
+  holds the current document and its undo/redo stacks. `ExpandSources` resolves the folders in a
+  picked or dropped selection to the supported files inside them, in natural order, so the same
+  folder yields the same document however it arrived.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
-  `ImageCrateDecoder` (the `image` crate), a PNG encoder, and `FakePdfEngine`.
+  `ImageCrateDecoder` (the `image` crate), a PNG encoder, `StdFsWalker`, and `FakePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
   use case, and returns a `PlanSnapshot` DTO. The command bodies are split into `*_inner`
   functions that take `&AppState`, so they are testable without a webview.
@@ -188,6 +190,7 @@ Every plan command returns a fresh `PlanSnapshot`.
 | Command                          | Semantics                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
+| `expand_paths(paths)`            | Resolve folders to the supported files inside them (does **not** return a plan) |
 | `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
 | `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
 | `rotate_slots(slot_ids, delta)`  | Turn surviving slots clockwise modulo four, then re-evaluate regrouping         |
@@ -199,6 +202,9 @@ Two shapes are deliberate:
 
 - **Plan mutations return the whole canonical snapshot.** Unknown slot ids are ignored, and an
   empty or otherwise unchanged rotation does not add an undo entry.
+- **`expand_paths` answers a question rather than making a change.** Splitting it from
+  `add_sources` is what lets the frontend see how many files a folder holds, and ask about a
+  large one, before anything enters the plan. A single command could not ask.
 - **Thumbnails cross the IPC boundary as raw PNG bytes** in a `tauri::ipc::Response`, never as
   base64 or a JSON number array. The frontend wraps them in blob URLs held by an LRU cache
   (`src/lib/thumbnail-cache.ts`) that revokes each URL on eviction. Rotation is a CSS transform

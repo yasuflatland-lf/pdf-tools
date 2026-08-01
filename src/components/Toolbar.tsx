@@ -7,6 +7,7 @@ import { redo, undo } from "../lib/tauri-api";
 import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
+import { AddSourcesMenu } from "./AddSourcesMenu";
 import { ErrorDialog } from "./ErrorDialog";
 import { MergeProgressLine } from "./MergeProgressLine";
 import { ToolbarIconButton } from "./ToolbarIconButton";
@@ -100,6 +101,8 @@ export function Toolbar() {
       {/* The same file the favicon and the bundle icons are generated from. */}
       <img alt="PDF Tools" className="mr-2.5 size-5" src="/logo.svg" />
 
+      <AddSourcesMenu />
+      <span aria-hidden="true" className="mx-2.5 h-5 w-px bg-slate-700" />
       <span>
         <span>{countLabel(fileCount, "file")}</span>
         <span aria-hidden="true" className="px-1.5 text-slate-600">

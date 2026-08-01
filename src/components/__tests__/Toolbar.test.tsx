@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   ask: vi.fn(),
   compose: vi.fn(),
   defaultOutputDir: vi.fn(),
+  expandPaths: vi.fn(),
   joinPath: vi.fn((dir: string, name: string) => `${dir}/${name}`),
   onComposeProgress: vi.fn(),
   onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../lib/tauri-api", () => ({
   addSources: mocks.addSources,
   compose: mocks.compose,
+  expandPaths: mocks.expandPaths,
   onComposeProgress: mocks.onComposeProgress,
   rasterizeSlot: mocks.rasterizeSlot,
   redo: mocks.redo,
@@ -167,11 +169,16 @@ function keyDown(init: KeyboardEventInit): void {
 describe("Toolbar", () => {
   beforeEach(() => {
     mocks.addSources.mockReset();
+    mocks.ask.mockReset();
     mocks.compose.mockReset();
     mocks.defaultOutputDir.mockReset();
+    mocks.expandPaths.mockReset();
+    mocks.expandPaths.mockResolvedValue([]);
     mocks.joinPath.mockClear();
     mocks.onComposeProgress.mockReset();
     mocks.onDragDropEvent.mockClear();
+    mocks.open.mockReset();
+    mocks.open.mockResolvedValue(null);
     mocks.parentDir.mockClear();
     mocks.rememberOutputDir.mockReset();
     mocks.revealItemInDir.mockReset();
@@ -233,6 +240,38 @@ describe("Toolbar", () => {
 
     expect(logo?.getAttribute("src")).toBe("/logo.svg");
     expect(logo?.getAttribute("alt")).toBe("PDF Tools");
+  });
+
+  it("opens the add menu and closes it on Escape", async () => {
+    const container = await renderToolbar();
+    const trigger = getButton(container, "Add files or a folder");
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+
+    await click(trigger);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+    expect(getButton(container, "Files…")).toBeDefined();
+    expect(getButton(container, "Folder…")).toBeDefined();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+    });
+
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("closes the menu after an item runs", async () => {
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Add files or a folder"));
+    await click(getButton(container, "Folder…"));
+
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(mocks.open).toHaveBeenCalledWith({ directory: true });
   });
 
   it("switches between grid and list views and reports the active mode", async () => {
