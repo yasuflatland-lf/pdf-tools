@@ -2,7 +2,7 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import { useCallback } from "react";
 import { errorMessage } from "../lib/error-message";
 import { baseName } from "../lib/output-dir";
-import { addSources, expandPaths } from "../lib/tauri-api";
+import { addSources, expandPaths, supportedExtensions } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 
@@ -12,8 +12,6 @@ import { useUiStore } from "../store/ui-store";
  * that a mis-picked folder costs more than the question does.
  */
 const CONFIRM_THRESHOLD = 200;
-
-const SUPPORTED_EXTENSIONS = ["pdf", "jpg", "jpeg", "png", "gif"];
 
 interface AddSourcesController {
   isIngesting: boolean;
@@ -26,10 +24,9 @@ interface AddSourcesController {
  * Runs the whole add procedure: expand, report an empty result, confirm a
  * large one, then hand the files to the plan.
  *
- * `label` names the folder the files came from, or is `null` when there is no
- * single folder to name. An expansion that returns nothing proves every input
- * was a directory, since files pass through untouched -- which is why the
- * empty notice can talk about folders without being told which inputs were.
+ * `label` names the single folder or file selected, or is `null` when there is
+ * no single selection to name. An expansion returns nothing when no supported
+ * files were found.
  */
 async function ingest(paths: string[], label: string | null): Promise<void> {
   if (paths.length === 0) {
@@ -49,7 +46,7 @@ async function ingest(paths: string[], label: string | null): Promise<void> {
     if (expanded.length === 0) {
       ui.setSourceNotice(
         label === null
-          ? "No PDFs or images found in the selected folders."
+          ? "No PDFs or images found in the selection."
           : `No PDFs or images found in "${label}".`,
       );
       return;
@@ -87,7 +84,7 @@ export function useAddSources(): AddSourcesController {
   const chooseFiles = useCallback(async () => {
     const picked = await open({
       multiple: true,
-      filters: [{ name: "PDFs and images", extensions: SUPPORTED_EXTENSIONS }],
+      filters: [{ name: "PDFs and images", extensions: await supportedExtensions() }],
     });
     if (picked === null) {
       return;

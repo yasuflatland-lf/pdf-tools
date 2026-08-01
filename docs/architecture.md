@@ -201,7 +201,8 @@ Every plan command returns a fresh `PlanSnapshot`.
 | Command                          | Semantics                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
-| `expand_paths(paths)`            | Resolve folders to the supported files inside them (does **not** return a plan) |
+| `expand_paths(paths)`            | Resolve and filter paths to supported files (does **not** return a plan)        |
+| `supported_extensions()`         | Return the domain-owned extension list for the file picker                      |
 | `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
 | `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
 | `rotate_slots(slot_ids, delta)`  | Turn surviving slots clockwise modulo four, then re-evaluate regrouping         |

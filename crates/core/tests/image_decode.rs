@@ -131,3 +131,25 @@ fn absent_files_report_missing() {
     let err = ImageCrateDecoder.probe(Path::new("/nope.png")).unwrap_err();
     assert!(matches!(err, ImageError::Missing { .. }));
 }
+
+#[test]
+fn pdf_paths_report_unsupported_format() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("report.pdf");
+    std::fs::write(&path, b"fixture").unwrap();
+
+    let err = ImageCrateDecoder.probe(&path).unwrap_err();
+
+    assert!(matches!(err, ImageError::UnsupportedFormat { .. }));
+}
+
+#[test]
+fn text_paths_report_unsupported_format() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("notes.txt");
+    std::fs::write(&path, b"fixture").unwrap();
+
+    let err = ImageCrateDecoder.probe(&path).unwrap_err();
+
+    assert!(matches!(err, ImageError::UnsupportedFormat { .. }));
+}
