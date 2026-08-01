@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use pdfium_render::prelude::{
     PdfColor, PdfPageObjectsCommon, PdfPagePaperSize, PdfPagePaperStandardSize, PdfPagePathObject,
@@ -6,6 +8,9 @@ use pdfium_render::prelude::{
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+
+#[path = "../../examples/support/exif_fixtures.rs"]
+mod exif_fixtures;
 
 pub fn library_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/resources/pdfium")
@@ -17,6 +22,11 @@ pub fn fixtures_dir() -> PathBuf {
 
 pub fn fixture(name: &str) -> PathBuf {
     ensure_generated();
+    fixtures_dir().join(name)
+}
+
+pub fn image_fixture(name: &str) -> PathBuf {
+    ensure_image_fixtures();
     fixtures_dir().join(name)
 }
 
@@ -35,9 +45,9 @@ pub fn engine() -> &'static PdfiumEngine {
 }
 
 pub fn ensure_generated() {
-    let directory = fixtures_dir();
-    fs::create_dir_all(&directory).expect("fixture directory should be created");
+    ensure_image_fixtures();
 
+    let directory = fixtures_dir();
     let multi_page_path = directory.join("multi_page.pdf");
     let mixed_size_path = directory.join("mixed_size.pdf");
     let rotated_page_path = directory.join("rotated_page.pdf");
@@ -102,6 +112,12 @@ pub fn ensure_generated() {
     if let Some(bytes) = rotated_page_bytes {
         write_atomic_if_absent(&rotated_page_path, &bytes);
     }
+}
+
+pub fn ensure_image_fixtures() {
+    let directory = fixtures_dir();
+    fs::create_dir_all(&directory).expect("fixture directory should be created");
+    exif_fixtures::ensure_generated(&directory);
 }
 
 fn make_pdf(pdfium: &Pdfium, sizes: &[PdfPagePaperSize]) -> Result<Vec<u8>, PdfiumError> {

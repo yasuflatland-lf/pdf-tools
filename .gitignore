@@ -67,5 +67,6 @@ cert-out/
 /crates/core/tests/fixtures/mixed_size.pdf
 /crates/core/tests/fixtures/corrupt.pdf
 /crates/core/tests/fixtures/rotated_page.pdf
+/crates/core/tests/fixtures/exif-*.jpg
 # Leftovers if fixture generation is interrupted between write and rename.
 /crates/core/tests/fixtures/*.tmp.*

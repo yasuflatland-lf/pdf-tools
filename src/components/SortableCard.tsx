@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import type { CardSelectionModifiers } from "./usePageCards";
 
 interface Transform {
   x: number;
@@ -27,6 +28,7 @@ interface SortableCardProps {
   focused?: boolean;
   id: string;
   label: string;
+  onSelect?: (modifiers: CardSelectionModifiers) => void;
   rotation: number;
   selected?: boolean;
 }
@@ -36,6 +38,7 @@ export function SortableCard({
   focused,
   id,
   label,
+  onSelect,
   rotation,
   selected,
 }: SortableCardProps) {
@@ -78,6 +81,19 @@ export function SortableCard({
       }}
       {...attributes}
       {...listeners}
+      onClick={(event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest("button")) {
+          return;
+        }
+
+        event.currentTarget.focus();
+        onSelect?.({
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+        });
+      }}
       aria-label={`Reorder ${label}${rotation !== 0 ? `, rotation ${rotation * 90}° clockwise` : ""}`}
       aria-selected={selected === true}
     >
