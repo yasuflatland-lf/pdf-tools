@@ -96,7 +96,7 @@ impl PdfEngine for FakePdfEngine {
                 count: info.page_count,
             })?;
         let height =
-            ((spec.target_width_px as f32 * size.height_pt) / size.width_pt).round() as u32;
+            ((spec.target_width_px as f32 * size.height_pt()) / size.width_pt()).round() as u32;
         let pixel_count = spec.target_width_px as usize * height as usize;
 
         Ok(RasterImage {

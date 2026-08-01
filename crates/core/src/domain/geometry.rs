@@ -1,10 +1,13 @@
 const LATTICE_PT: f32 = 1.0;
 
-/// The dimensions of a page in points.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The dimensions of a page in points, before any rotation. A slot's rotation
+/// is written as the page's `/Rotate` attribute rather than by exchanging
+/// these axes, so this is the sheet a page is built on and not the shape it is
+/// seen as.
+#[derive(Debug, Clone, Copy)]
 pub struct PageSize {
-    pub width_pt: f32,
-    pub height_pt: f32,
+    width_pt: f32,
+    height_pt: f32,
 }
 
 /// A page-size equivalence class on the one-point lattice.
@@ -21,6 +24,25 @@ impl PageSize {
         height_pt: 841.89,
     };
 
+    /// Creates a page size, or `None` when either dimension is not a positive
+    /// finite number of points. A page with no area cannot be composed onto:
+    /// fitting an image to it divides by zero.
+    pub fn new(width_pt: f32, height_pt: f32) -> Option<Self> {
+        (width_pt.is_finite() && height_pt.is_finite() && width_pt > 0.0 && height_pt > 0.0)
+            .then_some(Self {
+                width_pt,
+                height_pt,
+            })
+    }
+
+    pub fn width_pt(self) -> f32 {
+        self.width_pt
+    }
+
+    pub fn height_pt(self) -> f32 {
+        self.height_pt
+    }
+
     /// Returns the page size with its width and height exchanged.
     pub fn turned(self) -> Self {
         Self {
@@ -35,6 +57,16 @@ impl PageSize {
             width_cells: (self.width_pt / LATTICE_PT).round() as i32,
             height_cells: (self.height_pt / LATTICE_PT).round() as i32,
         }
+    }
+}
+
+/// Two pages are the same size when they land in the same cell of the
+/// one-point lattice. Raw float equality would make 595.2 pt and 595.4 pt
+/// different pages, which is a distinction no reader of the output can make
+/// and one that `dominant_page_size` deliberately does not draw.
+impl PartialEq for PageSize {
+    fn eq(&self, other: &Self) -> bool {
+        self.size_class() == other.size_class()
     }
 }
 
@@ -58,35 +90,34 @@ mod tests {
 
     #[test]
     fn turned_page_size_exchanges_the_axes() {
-        let size = PageSize {
-            width_pt: 612.0,
-            height_pt: 792.0,
-        };
+        let size = PageSize::new(612.0, 792.0).expect("page size should be valid");
 
         assert_eq!(
             size.turned(),
-            PageSize {
-                width_pt: 792.0,
-                height_pt: 612.0,
-            }
+            PageSize::new(792.0, 612.0).expect("turned page size should be valid")
         );
     }
 
     #[test]
-    fn page_sizes_in_the_same_lattice_cell_have_the_same_size_class() {
-        let a = PageSize {
-            width_pt: 595.2,
-            height_pt: 841.2,
-        };
-        let b = PageSize {
-            width_pt: 595.4,
-            height_pt: 841.4,
-        };
-        let c = PageSize {
-            width_pt: 595.5,
-            height_pt: 841.5,
-        };
-        assert_eq!(a.size_class(), b.size_class());
-        assert_ne!(a.size_class(), c.size_class());
+    fn new_accepts_positive_finite_dimensions() {
+        assert_eq!(PageSize::new(595.276, 841.89), Some(PageSize::A4_PORTRAIT));
+    }
+
+    #[test]
+    fn new_rejects_dimensions_that_are_not_positive_and_finite() {
+        for invalid in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(PageSize::new(invalid, 841.89), None);
+            assert_eq!(PageSize::new(595.276, invalid), None);
+        }
+    }
+
+    #[test]
+    fn page_size_equality_uses_the_one_point_lattice() {
+        let a = PageSize::new(595.2, 841.2).expect("page size should be valid");
+        let b = PageSize::new(595.4, 841.4).expect("page size should be valid");
+        let c = PageSize::new(595.5, 841.5).expect("page size should be valid");
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
     }
 }

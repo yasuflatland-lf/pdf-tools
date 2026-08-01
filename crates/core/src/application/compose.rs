@@ -107,10 +107,9 @@ mod tests {
     use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
     use crate::infrastructure::fake_engine::FakePdfEngine;
 
-    const LETTER: PageSize = PageSize {
-        width_pt: 612.0,
-        height_pt: 792.0,
-    };
+    fn letter() -> PageSize {
+        PageSize::new(612.0, 792.0).expect("Letter page size should be valid")
+    }
 
     struct NullProgress;
 
@@ -196,7 +195,7 @@ mod tests {
         let image_path = create_file(&temp_dir, "image.png");
         let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 20, 0)]);
         let sources = vec![
-            pdf_source(10, pdf_path, vec![LETTER]),
+            pdf_source(10, pdf_path, vec![letter()]),
             image_source(20, image_path),
         ];
         (temp_dir, MergeDocument::new(plan, sources))
@@ -252,7 +251,7 @@ mod tests {
         let composed = engine.last_composed().unwrap();
         match &composed.entries[1] {
             ComposeEntry::Image { fit_to, .. } => {
-                assert_eq!(fit_to.size_class(), LETTER.size_class());
+                assert_eq!(fit_to.size_class(), letter().size_class());
             }
             other => panic!("expected an image entry, got {other:?}"),
         }
@@ -299,7 +298,7 @@ mod tests {
         let document = MergeDocument::new(
             MergePlan::new(vec![slot(1, 10, 0), image_slot]),
             vec![
-                pdf_source(10, pdf_path, vec![LETTER]),
+                pdf_source(10, pdf_path, vec![letter()]),
                 image_source(20, image_path),
             ],
         );
@@ -314,7 +313,7 @@ mod tests {
             ComposeEntry::Image {
                 fit_to, rotation, ..
             } => {
-                assert_eq!(fit_to.size_class(), LETTER.size_class());
+                assert_eq!(fit_to.size_class(), letter().size_class());
                 assert_eq!(rotation, Rotation::from_quarter_turns(1));
             }
             ref other => panic!("expected an image entry, got {other:?}"),
@@ -372,7 +371,7 @@ mod tests {
             pdf_source(10, ready_path, vec![PageSize::A4_PORTRAIT]),
             SourceFile {
                 status: SourceStatus::Encrypted,
-                ..pdf_source(20, missing_failed_path, vec![LETTER])
+                ..pdf_source(20, missing_failed_path, vec![letter()])
             },
         ];
         let engine = FakePdfEngine::new();
