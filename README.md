@@ -24,7 +24,10 @@ your own disk.
 
 ## Features
 
-- **Drag and drop** PDFs and images; each file's pages become slots in one merge plan.
+- **Drag and drop** PDFs and images, or add them from a file or folder picker; each file's pages
+  become slots in one merge plan.
+- **Whole folders** — a dropped or picked folder expands into every PDF and image beneath it, at
+  any depth, in the order a file manager shows them. A large folder asks before it is added.
 - **Grouping** — contiguous pages from one file collapse into a single card. Insert something
   into the middle of a file and it expands into per-page cards; delete back to a contiguous,
   increasing run and it folds up again automatically.
