@@ -3,6 +3,7 @@ import { FolderOpen, Redo2, RotateCcw, RotateCw, Undo2 } from "lucide-react";
 import { useCallback } from "react";
 import { countLabel } from "../lib/format";
 import { shortcutHint } from "../lib/keyboard";
+import { baseName } from "../lib/output-dir";
 import { redo, undo } from "../lib/tauri-api";
 import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
@@ -20,11 +21,6 @@ async function showInFolder(dest: string): Promise<void> {
   } catch (error) {
     console.error("reveal item failed", error);
   }
-}
-
-/** The output's own name, which is all the completion chip has room for. */
-function fileName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
 }
 
 export function Toolbar() {
@@ -161,7 +157,7 @@ export function Toolbar() {
             <span className="flex items-center gap-1.5">
               <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
               <span className="max-w-[12rem] truncate" title={result.dest}>
-                {fileName(result.dest)}
+                {baseName(result.dest)}
               </span>
             </span>
             <button

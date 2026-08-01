@@ -5,6 +5,7 @@ import type { PageSlotDto } from "../../bindings/PageSlotDto";
 import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
 import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { usePlanStore } from "../../store/plan-store";
+import { useSnapshotSync } from "../../store/useSnapshotSync";
 import { useUiStore } from "../../store/ui-store";
 import { PageGrid } from "../PageGrid";
 import { ThumbnailCacheProvider } from "../card/ThumbnailCacheProvider";
@@ -67,14 +68,19 @@ function load(sourceFile: SourceFileDto, pageCount: number): void {
   });
 }
 
-async function renderGrid(): Promise<HTMLElement> {
+function SnapshotSyncedGrid() {
+  useSnapshotSync();
+  return <PageGrid />;
+}
+
+async function renderGrid(syncSnapshot = false): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   mountedRoots.push(root);
 
   await act(async () => {
-    root.render(renderWithCache(<PageGrid />));
+    root.render(renderWithCache(syncSnapshot ? <SnapshotSyncedGrid /> : <PageGrid />));
   });
 
   return container;
@@ -283,6 +289,38 @@ describe("PageGrid", () => {
     expect(container.querySelectorAll("article")).toHaveLength(3);
     expect(container.textContent).toContain("Page 1");
     expect(container.textContent).not.toContain("3 pages");
+  });
+
+  it("keeps an expanded source expanded after a rotate temporarily ungroups it", async () => {
+    const sourceFile = source(10, "grouped", 3);
+    const originalSlots = slots(sourceFile.id, 3);
+    const rotated: PlanSnapshot = {
+      slots: [{ ...originalSlots[0], rotation: 1 }, ...originalSlots.slice(1)],
+      sources: [{ ...sourceFile, grouping: "ungrouped" }],
+      can_undo: true,
+      can_redo: false,
+    };
+    const restored: PlanSnapshot = {
+      slots: originalSlots,
+      sources: [sourceFile],
+      can_undo: true,
+      can_redo: false,
+    };
+    const rotateSnapshots = [rotated, restored];
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(
+        command === "rotate_slots" ? rotateSnapshots.shift() : new Uint8Array([1, 2, 3]),
+      ),
+    );
+    load(sourceFile, 3);
+    const container = await renderGrid(true);
+
+    await click(container.querySelector('[aria-label="Expand 10.pdf"]') as HTMLElement);
+    await click(container.querySelector('[aria-label="Rotate right 10.pdf"]') as HTMLElement);
+    await click(container.querySelector('[aria-label="Rotate left 10.pdf"]') as HTMLElement);
+
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(true);
+    expect(container.querySelectorAll("article")).toHaveLength(3);
   });
 
   it("folds an expanded source back into one card from any of its pages", async () => {

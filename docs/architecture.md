@@ -1,6 +1,6 @@
 # Architecture (L2)
 
-> Doc layers: L1 = [`/CLAUDE.md`](../CLAUDE.md) / L2 = this file / L3 = [`docs/development.md`](development.md).
+> Doc layers: L1 = [`/CLAUDE.md`](../CLAUDE.md) / L2 = this file + [`development.md`](development.md) / L3 = [`.claude/`](../.claude).
 > The authoritative design lives in Notion; the local mirror is `docs/superpowers/specs/` (git-ignored).
 > This file summarises that design for people reading the code — it is not a copy of it. Where the
 > two disagree, the design is canonical and this file should be corrected.
@@ -15,6 +15,7 @@ add, insert, reorder, rotate, delete, undo — is a pure function from one plan 
 | --------------------------- | --------------------------------------------------------------------------------------- |
 | `PageSlot`                  | One output page. Carries its id, source, page index, and clockwise quarter-turn state.  |
 | `MergePlan`                 | The ordered `Vec<PageSlot>`. Vector order _is_ output page order.                       |
+| `SlotRange`                 | A contiguous span of positions in a plan; exists only when it names at least one slot.  |
 | `SourceFile`                | One file the user added: a PDF or an image.                                             |
 | `MergeDocument`             | A `MergePlan` and its sources, with every slot guaranteed to name a listed source.      |
 | Group                       | A contiguous run of slots from one source, drawn as a single card.                      |
@@ -72,7 +73,11 @@ infrastructure → domain. Nothing flows back. Concretely:
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
   holds the current document and its undo/redo stacks. `ExpandSources` resolves the folders in a
   picked or dropped selection to the supported files inside them, in natural order, so the same
-  folder yields the same document however it arrived.
+  folder yields the same document however it arrived. `RasterizeSlot` renders one slot to pixels,
+  sending it to the PDF engine or to the image decoder according to its source's kind, so that
+  choice lives beside `Compose`'s rather than in a command. Its `SlotTarget::resolve` is the
+  separate, cheap first half: it copies the one path, kind and page index the engine needs, so a
+  thumbnail request can release the session lock before rendering without copying the plan.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
   `ImageCrateDecoder` (the `image` crate), a PNG encoder, `StdFsWalker`, and `FakePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
@@ -138,7 +143,7 @@ represent only a run whose pages share an orientation.
 ```rust
 pub fn insert_at(plan: &MergePlan, at: usize, slots: &[PageSlot]) -> MergePlan
 pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
-pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
+pub fn reorder(plan: &MergePlan, from: SlotRange, to: usize) -> MergePlan
 pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan
 ```
 
@@ -148,6 +153,12 @@ recent 100 states and discards older ones, so undoing to exhaustion returns to t
 state, not necessarily to the empty document the session started from. A `PageSlot` is 24 bytes
 (two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan costs ~24 KB per stack
 entry — cheap enough that no diffing scheme is warranted.
+
+`reorder` moves a `SlotRange`, and the only way to hold one is to resolve a span against the plan
+it will move within. A span that names no slots — reversed, empty, or entirely past the end —
+resolves to nothing, so a stale selection arriving from the UI is rejected once at that boundary
+instead of being clamped again at every call site. `PlanSession::reorder` then returns having
+opened no history entry, which leaves both the document and the undo stack as they were.
 
 ## State ownership
 
@@ -190,7 +201,8 @@ Every plan command returns a fresh `PlanSnapshot`.
 | Command                          | Semantics                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------- |
 | `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
-| `expand_paths(paths)`            | Resolve folders to the supported files inside them (does **not** return a plan) |
+| `expand_paths(paths)`            | Resolve and filter paths to supported files (does **not** return a plan)        |
+| `supported_extensions()`         | Return the domain-owned extension list for the file picker                      |
 | `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
 | `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
 | `rotate_slots(slot_ids, delta)`  | Turn surviving slots clockwise modulo four, then re-evaluate regrouping         |
@@ -220,20 +232,56 @@ Two shapes are deliberate:
 DTO types are generated by `ts-rs` into `src/bindings/` and committed, so a change to a Rust DTO
 breaks the TypeScript build rather than failing silently at runtime.
 
+## Numeric representation
+
+Page geometry is `f32` from end to end. `PageSize` holds `width_pt` and `height_pt`
+(`crates/core/src/domain/geometry.rs`) and nothing widens them anywhere along the path.
+
+**Single precision is what both ends of the pipeline speak.** Dimensions are read out of PDFium as
+`pdf_page.width().value`, and `pdfium-render`'s `PdfPoints` wraps an `f32`; `compose` hands them
+back to the same crate through `PdfPoints::new(...)`. ISO 32000-1:2008 Annex C.1 gives PDF's
+architectural limit for real numbers as approximately ±3.403 × 10³⁸ with approximately five
+significant decimal digits — the bounds of an IEEE 754 single. Precision added inside `domain`
+would be narrowed away at the port boundary, and there is none to recover on the way in.
+
+**Arbitrary-precision decimal is barred outright.** `bigdecimal` and `rust_decimal` are external
+crates, and `domain` takes none; the value they would represent lives in `domain`. Independently of
+that rule, they answer a problem this codebase does not have — a rotation is a `/Rotate` attribute
+rather than a coordinate transform, and the only arithmetic on a `PageSize` is one division and two
+multiplications per slot in `compose`'s `placement`, never fed back — so no error accumulates.
+
+**The error is orders of magnitude below anything observable.** One ULP at A4 width is
+1.22 × 10⁻⁴ pt; one output pixel at the 200 DPI embed cap is 0.36 pt; one `SizeClass` lattice cell
+is 1 pt. Each step of that ordering spans four orders of magnitude.
+
+**Exact equality is the wrong tool for "the same sheet size" at any precision, which is why
+`SizeClass` exists.** Two PDFs that both call themselves A4 report 595.276 pt and 595.2756 pt when
+different tools produced them; those are different real numbers under exact decimal arithmetic just
+as they are under float comparison. What is needed is a stated tolerance, so `PageSize::eq` is
+hand-written over `size_class()` rather than derived, and `SizeClass` — two `i32` cell indices —
+derives the `Eq + Hash` that lets `dominant_page_size` key a `HashMap` on a page size at all.
+
+**No float crosses IPC.** Every number in `src/bindings/**` is an integer, and `src-tauri` contains
+no floating-point type, so a page dimension never leaves Rust.
+
+Deep reference, including the rejected alternatives, the `f32` hazards and where each is handled,
+and what to change first if precision ever does become a problem:
+[`.claude/numeric-precision.md`](../.claude/numeric-precision.md).
+
 ## Image pages
 
-An image page is fitted to the **dominant page size**: the most frequent effective size among the
-plan's PDF-backed slots, after each slot's rotation exchanges its axes when necessary. Ties are
-broken by first appearance in the plan, with A4 portrait used when the plan has no PDF pages at
-all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice, so the
-classification is independent of the order pages were added in.
+An image page is fitted to the **dominant page size**: the most frequent unrotated sheet size among
+the plan's PDF-backed slots. Ties are broken by first appearance in the plan, with A4 portrait used
+when the plan has no PDF pages at all. Sizes are classified by rounding each dimension to a cell on
+a 1 pt lattice, so the classification is independent of the order pages were added in.
 
-The image keeps its aspect ratio and the remaining sheet area is white. Its own rotation does not
-change `fit_to`: composition creates the sheet at the dominant size, places the image through the
-normal path, and then writes the rotation as the PDF page attribute. JPEG passthrough therefore
-remains untouched, and image-backed and PDF-backed slots follow the same turned-sheet rule. For a
-copied PDF page, the slot rotation is added to any rotation already declared by the source. An
-animated GIF contributes its first frame only.
+The image keeps its aspect ratio and the remaining sheet area is white. Image-backed and PDF-backed
+slots follow the same turned-sheet rule: composition creates an unrotated sheet and then writes the
+slot's rotation as the PDF page attribute. Turning both pages turns both sheets; turning only one
+page turns only that sheet, including in an image-only plan. A rotation never changes another
+page's size. JPEG passthrough therefore remains untouched. For a copied PDF page, the slot rotation
+is added to any rotation already declared by the source. An animated GIF contributes its first
+frame only.
 
 ## Error handling
 

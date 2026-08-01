@@ -88,7 +88,13 @@ function loadPages(): void {
 describe("AppShell", () => {
   beforeEach(() => {
     invoke.mockReset();
-    invoke.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(
+        command === "supported_extensions"
+          ? ["pdf", "jpg", "jpeg", "png", "gif"]
+          : new Uint8Array([1, 2, 3]),
+      ),
+    );
     open.mockReset();
     // A cancelled picker keeps a click from running the real add procedure.
     open.mockResolvedValue(null);

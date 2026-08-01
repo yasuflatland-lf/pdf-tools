@@ -1,4 +1,3 @@
-use std::ops::Range;
 use std::path::PathBuf;
 
 use crate::application::add_sources::AddSources;
@@ -6,7 +5,7 @@ use crate::application::ports::{ImageDecoder, PdfEngine};
 use crate::domain::document::MergeDocument;
 use crate::domain::ids::{IdSequence, SlotId, SourceId};
 use crate::domain::operations;
-use crate::domain::plan::MergePlan;
+use crate::domain::plan::{MergePlan, SlotRange};
 use crate::domain::source::SourceFile;
 
 const HISTORY_LIMIT: usize = 100;
@@ -68,7 +67,10 @@ impl PlanSession {
         self.finish_change();
     }
 
-    pub fn reorder(&mut self, from: Range<usize>, to: usize) {
+    pub fn reorder(&mut self, from_start: usize, from_end: usize, to: usize) {
+        let Some(from) = SlotRange::resolve(self.document.plan(), from_start, from_end) else {
+            return;
+        };
         self.begin_change();
         let plan = operations::reorder(self.document.plan(), from, to);
         self.document = self.document.with_plan(plan);
@@ -82,7 +84,7 @@ impl PlanSession {
         self.finish_change();
     }
 
-    pub fn rotate(&mut self, ids: &[SlotId], delta: i8) {
+    pub fn rotate(&mut self, ids: &[SlotId], delta: i32) {
         self.begin_change();
         let plan = operations::rotate(self.document.plan(), ids, delta);
         self.document = self.document.with_plan(plan);
@@ -135,13 +137,13 @@ impl PlanSession {
                     .plan()
                     .slots()
                     .iter()
-                    .any(|slot| slot.source == source.id);
+                    .any(|slot| slot.source == source.id());
                 let owns_now = self
                     .document
                     .plan()
                     .slots()
                     .iter()
-                    .any(|slot| slot.source == source.id);
+                    .any(|slot| slot.source == source.id());
 
                 // A source that never owned a slot represents an encrypted or
                 // unreadable file that the UI must continue to show.
@@ -217,11 +219,11 @@ mod tests {
         match op {
             0 => {
                 let len = session.plan().len();
-                session.reorder(len.saturating_sub(1)..len, len / 2);
+                session.reorder(len.saturating_sub(1), len, len / 2);
             }
             1 => {
                 let len = session.plan().len();
-                session.reorder(0..usize::from(len > 0), len.saturating_sub(1));
+                session.reorder(0, usize::from(len > 0), len.saturating_sub(1));
             }
             2 => {
                 let ids = session
@@ -280,7 +282,7 @@ mod tests {
     #[test]
     fn undo_restores_grouping_state_as_well_as_the_plan() {
         let mut s = session_with_pdf(3);
-        let source_id = s.sources()[0].id;
+        let source_id = s.sources()[0].id();
         let images = FakeImageDecoder::new().with_image(
             "/image.png",
             ImageInfo {
@@ -293,7 +295,7 @@ mod tests {
 
         // The drag the UI can actually make: the trailing image slot lands
         // strictly inside the PDF's run, which is what ungroups the PDF.
-        s.reorder(image_index..image_index + 1, 1);
+        s.reorder(image_index, image_index + 1, 1);
         assert!(!s.is_grouped(source_id));
         s.undo();
         assert!(s.is_grouped(source_id));
@@ -345,16 +347,27 @@ mod tests {
 
     #[test]
     fn degenerate_reorders_do_not_create_history() {
-        let ranges = [1..1, Range { start: 2, end: 1 }, 90..99];
+        let ranges = [(1, 1), (2, 1), (90, 99)];
 
-        for range in ranges {
+        for (from_start, from_end) in ranges {
             let mut s = session_with_pdf(3);
             s.undo.clear();
 
-            s.reorder(range, 0);
+            s.reorder(from_start, from_end, 0);
 
             assert!(!s.can_undo());
         }
+    }
+
+    #[test]
+    fn a_reorder_that_names_no_slots_leaves_redo_alone() {
+        let mut s = session_with_pdf(3);
+        s.remove(&[s.plan().slots()[0].id]);
+        assert!(s.undo());
+
+        s.reorder(1, 1, 0);
+
+        assert!(s.can_redo());
     }
 
     #[test]
@@ -377,7 +390,7 @@ mod tests {
     fn history_is_capped_at_one_hundred_entries() {
         let mut s = session_with_pdf(3);
         for _ in 0..125 {
-            s.reorder(0..1, 2);
+            s.reorder(0, 1, 2);
         }
 
         // Only the newest hundred states stay reachable; the rest are dropped.
@@ -413,7 +426,7 @@ mod tests {
         assert!(s
             .sources()
             .iter()
-            .any(|source| source.status == SourceStatus::Encrypted));
+            .any(|source| source.status() == SourceStatus::Encrypted));
     }
 
     #[test]
@@ -430,7 +443,7 @@ mod tests {
 
         assert!(s.can_undo());
         assert_eq!(s.sources().len(), 1);
-        assert_eq!(s.sources()[0].status, SourceStatus::Encrypted);
+        assert_eq!(s.sources()[0].status(), SourceStatus::Encrypted);
         assert!(s.undo());
         assert!(s.sources().is_empty());
     }
@@ -440,7 +453,7 @@ mod tests {
         let mut s = session_with_pdf(4);
         let before: Vec<SlotId> = s.plan().slots().iter().map(|slot| slot.id).collect();
 
-        s.reorder(0..2, 2);
+        s.reorder(0, 2, 2);
 
         let after: Vec<SlotId> = s.plan().slots().iter().map(|slot| slot.id).collect();
         assert_eq!(after, vec![before[2], before[3], before[0], before[1]]);
