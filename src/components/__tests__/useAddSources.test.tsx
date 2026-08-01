@@ -215,4 +215,38 @@ describe("useAddSources", () => {
 
     expect(expandPaths).not.toHaveBeenCalled();
   });
+
+  it("raises the in-flight flag for as long as the add runs, and turns a second one away", async () => {
+    let release!: (expanded: string[]) => void;
+    expandPaths.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const controller = await renderHook();
+
+    let firstAdd!: Promise<void>;
+    await act(async () => {
+      firstAdd = controller().addPaths(["/a/report.pdf"]);
+    });
+
+    expect(useUiStore.getState().isIngesting).toBe(true);
+    expect(controller().isIngesting).toBe(true);
+
+    await act(async () => {
+      await controller().addPaths(["/b/other.pdf"]);
+    });
+
+    expect(expandPaths).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release(["/a/report.pdf"]);
+      await firstAdd;
+    });
+
+    expect(useUiStore.getState().isIngesting).toBe(false);
+    expect(controller().isIngesting).toBe(false);
+    expect(addSources).toHaveBeenCalledTimes(1);
+    expect(addSources).toHaveBeenCalledWith(["/a/report.pdf"]);
+  });
 });
