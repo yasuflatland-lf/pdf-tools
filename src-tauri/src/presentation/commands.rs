@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
 use pdf_tools_core::application::expand_sources::ExpandSources;
-use pdf_tools_core::application::rasterize_slot::RasterizeSlot;
+use pdf_tools_core::application::rasterize_slot::{RasterizeSlot, SlotTarget};
 use pdf_tools_core::domain::ids::SlotId;
 use pdf_tools_core::infrastructure::png::encode_png;
 use tauri::ipc::Response;
@@ -194,18 +194,20 @@ pub async fn compose(app: AppHandle, dest: String) -> Result<MergeReportDto, Str
 /// Renders one plan slot to PNG bytes. Split out of the command so tests can
 /// exercise it without a webview.
 pub fn rasterize_slot_inner(state: &AppState, slot_id: u64, width: u32) -> Result<Vec<u8>, String> {
-    // The document is cloned out of the session so the lock is released before
-    // the engine runs, as `compose` already does.
-    let document = {
+    // Only the named slot is resolved out of the session, so the lock is
+    // released before the engine runs -- as `compose` already does -- without
+    // copying a plan per thumbnail.
+    let target = {
         let session = state.session();
-        session.document().clone()
-    };
+        SlotTarget::resolve(session.document(), SlotId(slot_id))
+    }
+    .map_err(|error| error.to_string())?;
 
     let image = RasterizeSlot {
         pdf: state.pdf(),
         images: state.images(),
     }
-    .execute(&document, SlotId(slot_id), width)
+    .execute(&target, width)
     .map_err(|error| error.to_string())?;
 
     encode_png(&image).map_err(|error| error.to_string())
