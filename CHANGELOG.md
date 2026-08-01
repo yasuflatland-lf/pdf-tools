@@ -7,14 +7,73 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-01
+
+Pages can be turned. A slot carries a clockwise quarter-turn count, three controls apply it, and
+the merged file writes each turn as the PDF page's `/Rotate` attribute, so the pixels are touched
+exactly once — at compose time — however many times the button was pressed. Two defects that
+feature exposed are fixed alongside it: a mouse could not select a card at all, and a photo
+carrying an EXIF orientation was imported lying down.
+
+### Pages
+
+- **Pages rotate in quarter turns.** `PageSlot` carries a `Rotation`, a clockwise quarter-turn
+  count in `0..4`, and three entry points turn the selected pages: two toolbar buttons, two
+  buttons revealed over a card's preview, and `⌘]` / `⌘[`. Rotation is a **position, not a
+  history** — adding is modulo four, so four presses return to the original value and the plan
+  records where a page ended up rather than how it got there.
+- **No page is re-encoded to turn it.** A turn is written as the PDF page's `/Rotate` attribute
+  rather than as a transform on page content, so a copied PDF page's content stream is never
+  rewritten and a rotated JPEG page still ships its original `DCTDecode` stream through the
+  passthrough path. For a copied PDF page the slot's rotation is added to any rotation the source
+  already declared.
+- **The paper turns with the page.** A 90°-rotated portrait page prints as a landscape sheet, and
+  the dominant-page-size census that decides where an image lands now counts each PDF-backed slot
+  by its **effective** size — so an image added to a plan whose pages have all been turned lands
+  on a landscape sheet and matches its neighbours.
+- **A run stays collapsed only while its pages share an orientation.** A collapsed card renders
+  the run's first page and captions it with a page count, which would misdescribe a run whose
+  pages point different ways. Rotating part of a run ungroups it, and turning the odd page back
+  refolds it.
+- A turn costs no IPC. The thumbnail already in the LRU cache is rotated with a CSS transform
+  under the same `slotId:width` key, and the fitting scale keeps an odd quarter turn inside the
+  virtualized card's unchanged frame.
+
 ### Interface
 
+- **The mouse can select cards.** `selectedSlots` was only ever written by `⌘A`, by `Escape` and
+  by arrow-key focus movement, and the card carried no click handler at all, because the whole
+  card is dnd-kit's drag surface. That left both the new batch rotation and the `Delete` removal
+  that has been there all along unreachable for a mouse user. A click now selects a card,
+  `⌘`/`Ctrl`-click toggles it, and `Shift`-click extends the range from the last selected card. No
+  sensor change was needed: the pointer sensor already required 8 px of movement before a press
+  became a drag, so a press that did not move was a click waiting for a handler.
 - The app carries its own shield logo instead of the stock Tauri mark: the bundle icons for macOS
   and Windows, the window favicon, and a mark at the head of the toolbar. All three read
   `public/logo.svg`, and `mise run gen-icons` rasterizes that one file into `src-tauri/icons/`.
 - The artwork drew the shield down to y=105 inside a `viewBox` of 100, which cropped its point in
   every icon size. The `viewBox` now frames the whole shield, and a test fails if any path leaves
   it again.
+
+### Images
+
+- **A photo carrying an EXIF orientation is imported upright.** The decoder called
+  `ImageReader::decode()`, which does not apply the orientation tag, and reported stored pixel
+  dimensions rather than displayed ones. Both are corrected, and the four transposing orientations
+  now exchange the reported axes.
+- **All eight orientations keep the JPEG passthrough.** An EXIF orientation is not a page turn: it
+  normalizes the content of one image, so unlike the user's own rotation it must not change the
+  sheet. The correction is expressed as the placement matrix of the image object, which leaves the
+  original `DCTDecode` stream copied verbatim.
+- **Failing to read an orientation is not failing to read the image.** A damaged EXIF block falls
+  back to no transform rather than turning a decodable photo into an error card.
+
+### Toolchain
+
+- TypeScript 7, Vite 8 and `@vitejs/plugin-react` 6. TypeScript 7 rejects a side-effect import
+  that has no declaration (TS2882), which is what `import "./index.css"` is, so the Vite ambient
+  types that declare the bundler's asset modules are now named in `tsconfig.json` rather than
+  resolved implicitly.
 
 ## [0.2.0] — 2026-08-01
 
