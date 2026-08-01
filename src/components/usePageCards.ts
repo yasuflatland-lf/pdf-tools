@@ -131,6 +131,31 @@ interface CardFocusOptions {
   scrollToIndex: (rowIndex: number) => void;
 }
 
+export interface CardSelectionModifiers {
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
+interface CardFocusResult {
+  focusedIndex: number | null;
+  selectCard: (index: number, modifiers: CardSelectionModifiers) => void;
+}
+
+interface CardPosition {
+  index: number;
+  key: string;
+}
+
+function resolveCardIndex(position: CardPosition | null, cards: DisplayCard[]): number {
+  if (position === null) {
+    return -1;
+  }
+
+  const byKey = cards.findIndex((card) => card.key === position.key);
+  return byKey >= 0 ? byKey : Math.min(position.index, cards.length - 1);
+}
+
 /**
  * Arrow navigation over the cards. It lives here rather than in a view because
  * both views need it and only the column count differs -- the list is a grid one
@@ -145,26 +170,63 @@ export function useCardFocus({
   cards,
   columnCount,
   scrollToIndex,
-}: CardFocusOptions): number | null {
-  const [focused, setFocused] = useState<{ key: string; index: number } | null>(null);
-  const focusedIndex =
-    focused === null
-      ? -1
-      : (() => {
-          const byKey = cards.findIndex((card) => card.key === focused.key);
-          // The focused card is gone: stay where the user was looking, clamped.
-          return byKey >= 0 ? byKey : Math.min(focused.index, cards.length - 1);
-        })();
+}: CardFocusOptions): CardFocusResult {
+  const [focused, setFocused] = useState<CardPosition | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<CardPosition | null>(null);
+  // A card can disappear after delete, reorder or undo. Stay near the same
+  // position until the effect below anchors focus to the replacement card.
+  const focusedIndex = resolveCardIndex(focused, cards);
+  const anchorIndex = resolveCardIndex(selectionAnchor, cards);
 
   // Once the focus has fallen back onto whatever card took that position,
   // re-anchor it to that card and make the selection follow it, or the next
   // Delete acts on a card the ring is no longer drawn around.
   useEffect(() => {
     if (focused !== null && focusedIndex >= 0 && cards[focusedIndex].key !== focused.key) {
-      setFocused({ key: cards[focusedIndex].key, index: focusedIndex });
+      const replacement = { key: cards[focusedIndex].key, index: focusedIndex };
+      setFocused(replacement);
+      setSelectionAnchor(replacement);
       useUiStore.getState().selectSlots(cards[focusedIndex].slotIds);
     }
   }, [cards, focused, focusedIndex]);
+
+  const selectCard = (index: number, modifiers: CardSelectionModifiers): void => {
+    const card = cards[index];
+    if (!card) {
+      return;
+    }
+
+    const nextPosition = { key: card.key, index };
+    setFocused(nextPosition);
+
+    if (modifiers.shiftKey && anchorIndex >= 0) {
+      const rangeStart = Math.min(anchorIndex, index);
+      const rangeEnd = Math.max(anchorIndex, index);
+      useUiStore
+        .getState()
+        .selectSlots(
+          cards.slice(rangeStart, rangeEnd + 1).flatMap((rangeCard) => rangeCard.slotIds),
+        );
+      return;
+    }
+
+    setSelectionAnchor(nextPosition);
+    if (modifiers.metaKey || modifiers.ctrlKey) {
+      const selected = new Set(useUiStore.getState().selectedSlots);
+      const cardIsSelected = card.slotIds.every((slotId) => selected.has(slotId));
+      for (const slotId of card.slotIds) {
+        if (cardIsSelected) {
+          selected.delete(slotId);
+        } else {
+          selected.add(slotId);
+        }
+      }
+      useUiStore.getState().selectSlots([...selected]);
+      return;
+    }
+
+    useUiStore.getState().selectSlots(card.slotIds);
+  };
 
   const moveFocus = (action: ShortcutAction): boolean => {
     const next = nextFocusIndex(action, focusedIndex, cards.length, columnCount);
@@ -172,7 +234,9 @@ export function useCardFocus({
       return false;
     }
 
-    setFocused({ key: cards[next].key, index: next });
+    const nextPosition = { key: cards[next].key, index: next };
+    setFocused(nextPosition);
+    setSelectionAnchor(nextPosition);
     scrollToIndex(Math.floor(next / columnCount));
     useUiStore.getState().selectSlots(cards[next].slotIds);
     return true;
@@ -185,7 +249,7 @@ export function useCardFocus({
     "focus-row-next": () => moveFocus("focus-row-next"),
   });
 
-  return focusedIndex >= 0 ? focusedIndex : null;
+  return { focusedIndex: focusedIndex >= 0 ? focusedIndex : null, selectCard };
 }
 
 interface CardRowsOptions {

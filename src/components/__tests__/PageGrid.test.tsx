@@ -139,6 +139,17 @@ function pointerEvent(type: string, clientX: number, clientY: number): MouseEven
   return event;
 }
 
+async function click(
+  target: Element,
+  modifiers: Pick<MouseEventInit, "ctrlKey" | "metaKey" | "shiftKey"> = {},
+): Promise<void> {
+  await act(async () => {
+    target.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers }),
+    );
+  });
+}
+
 function stopMeasuringElements(): void {
   for (const [name, descriptor] of measuredProperties) {
     if (descriptor) {
@@ -345,6 +356,114 @@ describe("PageGrid", () => {
 
     expect(container.querySelector('[aria-label^="Expand "]')).toBeNull();
     expect(container.querySelector('[aria-label^="Collapse "]')).toBeNull();
+  });
+
+  it("selects one clicked card and deselects the rest", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    useUiStore.setState({ selectedSlots: new Set([1, 3]) });
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[1]);
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+    expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual([
+      "false",
+      "true",
+      "false",
+    ]);
+  });
+
+  it("toggles one card with Command or Control click without disturbing the others", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    useUiStore.setState({ selectedSlots: new Set([1, 3]) });
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[1], { metaKey: true });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 3, 2]));
+
+    await click(options[1], { ctrlKey: true });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 3]));
+  });
+
+  it("selects the inclusive range between the anchor and a Shift-clicked card", async () => {
+    load(source(10, "ungrouped", 5), 5);
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[1]);
+    await click(options[4], { shiftKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2, 3, 4, 5]));
+  });
+
+  it("starts a drag after pointer movement without changing the selection", async () => {
+    load(source(10, "ungrouped", 2), 2);
+    useUiStore.setState({ selectedSlots: new Set([2]) });
+    const container = await renderGrid();
+    const cards = layOutSortableCards(container);
+
+    await act(async () => {
+      cards[0].dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      await Promise.resolve();
+    });
+
+    expect(cards[0].style.opacity).toBe("0.4");
+
+    await act(async () => {
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+      cards[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      // dnd-kit removes its capture-phase click suppressor 50ms after a drag.
+      // Let that cleanup finish so it cannot swallow a later test's click.
+      await new Promise((resolve) => setTimeout(resolve, 64));
+    });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+  });
+
+  it("selects every slot represented by a clicked collapsed card", async () => {
+    load(source(10, "grouped", 3), 3);
+    const container = await renderGrid();
+    const caption = container.querySelector<HTMLElement>('article p[title="10.pdf"]');
+
+    expect(caption).not.toBeNull();
+    await click(caption as HTMLElement);
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps a rotate-button press away from selection and drag state", async () => {
+    const sourceFile = source(10, "ungrouped", 2);
+    const rotated: PlanSnapshot = {
+      slots: [{ ...slots(sourceFile.id, 2)[0], rotation: 1 }, slots(sourceFile.id, 2)[1]],
+      sources: [sourceFile],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "rotate_slots" ? rotated : new Uint8Array([1, 2, 3])),
+    );
+    load(sourceFile, 2);
+    useUiStore.setState({ selectedSlots: new Set([2]) });
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+    const sortable = rotate?.closest<HTMLElement>('[aria-roledescription="sortable"]');
+    layOutSortableCards(container);
+
+    await act(async () => {
+      rotate?.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+      rotate?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(invoke).toHaveBeenCalledWith("rotate_slots", { slotIds: [1], delta: 1 });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+    expect(sortable?.style.opacity).toBe("1");
   });
 
   it("moves focus and selection to a card with the arrow keys", async () => {

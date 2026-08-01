@@ -43,7 +43,7 @@ export function CardSurface({
     rowHeight,
     scrollRef: containerRef,
   });
-  const focusedIndex = useCardFocus({ cards, columnCount, scrollToIndex });
+  const { focusedIndex, selectCard } = useCardFocus({ cards, columnCount, scrollToIndex });
 
   return (
     <CardSurfaceCacheContext value={cache}>
@@ -84,6 +84,7 @@ export function CardSurface({
                           label={card.fileName}
                           rotation={card.slot.rotation}
                           focused={focusedIndex === cardIndex}
+                          onSelect={(modifiers) => selectCard(cardIndex, modifiers)}
                           selected={selected}
                         >
                           {renderCard(card, thumbnailWidth)}
