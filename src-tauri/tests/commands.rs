@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use pdf_tools_core::application::compose::ProgressSink;
 use pdf_tools_core::application::errors::PdfError;
-use pdf_tools_core::application::ports::{ComposePlan, MergeReport, PdfEngine};
+use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, MergeReport, PdfEngine};
 use pdf_tools_core::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
@@ -43,7 +43,19 @@ impl PdfEngine for WritingPdfEngine {
         self.inner.rasterize(src, page, spec)
     }
 
+    /// Mirrors `PdfiumEngine`: each entry's source is opened as the document is
+    /// assembled, so one that has vanished fails the merge, and it fails before
+    /// the destination is written rather than leaving a partial file behind.
     fn compose(&self, plan: &ComposePlan, dest: &Path) -> Result<MergeReport, PdfError> {
+        for entry in &plan.entries {
+            let path = match entry {
+                ComposeEntry::PdfPage { path, .. } | ComposeEntry::Image { path, .. } => path,
+            };
+            if !path.is_file() {
+                return Err(PdfError::Missing { path: path.clone() });
+            }
+        }
+
         let report = self.inner.compose(plan, dest)?;
         let bytes = b"%PDF-1.7\n%%EOF\n";
         std::fs::write(dest, bytes).map_err(|error| PdfError::WriteFailed {
