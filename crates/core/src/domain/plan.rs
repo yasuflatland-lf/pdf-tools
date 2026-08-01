@@ -20,11 +20,6 @@ impl Rotation {
     pub fn quarter_turns(self) -> u8 {
         self.0
     }
-
-    /// Returns whether width and height exchange at this rotation.
-    pub fn swaps_axes(self) -> bool {
-        self.0 % 2 == 1
-    }
 }
 
 /// A page from a source at a specific position in a merge plan.
@@ -94,14 +89,6 @@ mod tests {
     fn raw_quarter_turn_counts_are_normalized() {
         assert_eq!(Rotation::from_quarter_turns(-5).quarter_turns(), 3);
         assert_eq!(Rotation::from_quarter_turns(10).quarter_turns(), 2);
-    }
-
-    #[test]
-    fn odd_quarter_turn_positions_swap_the_axes() {
-        assert!(!Rotation::from_quarter_turns(0).swaps_axes());
-        assert!(Rotation::from_quarter_turns(1).swaps_axes());
-        assert!(!Rotation::from_quarter_turns(2).swaps_axes());
-        assert!(Rotation::from_quarter_turns(3).swaps_axes());
     }
 
     #[test]

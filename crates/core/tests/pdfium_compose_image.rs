@@ -502,6 +502,38 @@ fn images_and_pdf_pages_can_be_interleaved() {
 }
 
 #[test]
+fn a_turned_image_page_and_a_turned_pdf_page_agree() {
+    let out = temp_path("turned-pages.pdf");
+    let rotation = Rotation::from_quarter_turns(1);
+    let plan = ComposePlan {
+        entries: vec![
+            ComposeEntry::PdfPage {
+                path: fixture("multi_page.pdf"),
+                page: PageIndex(0),
+                rotation,
+            },
+            ComposeEntry::Image {
+                path: fixture("sample.jpg"),
+                fit_to: PageSize::A4_PORTRAIT,
+                rotation,
+            },
+        ],
+    };
+    engine().compose(&plan, &out).unwrap();
+
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(&out, None).unwrap();
+        let pages = document.pages();
+        let pdf_page = pages.get(0).unwrap();
+        let image_page = pages.get(1).unwrap();
+        assert!((pdf_page.width().value - image_page.width().value).abs() < 0.01);
+        assert!((pdf_page.height().value - image_page.height().value).abs() < 0.01);
+        // Both must be the turned A4 sheet, so agreeing on portrait cannot pass.
+        assert!(pdf_page.width().value > pdf_page.height().value);
+    });
+}
+
+#[test]
 fn an_animated_gif_contributes_only_its_first_frame() {
     let out = temp_path("gif.pdf");
     engine().compose(&image_plan("animated.gif"), &out).unwrap();

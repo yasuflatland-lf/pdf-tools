@@ -60,6 +60,11 @@ impl MergeDocument {
     /// the document's PDF-backed slots. Ties go to whichever size appears
     /// first in the plan. Falls back to A4 portrait when the plan contains no
     /// PDF pages. Sizes are classified on a one-point lattice.
+    ///
+    /// This is a **sheet** size, taken before any rotation. Composition writes
+    /// the slot's rotation as the page's `/Rotate` attribute, for image-backed
+    /// and PDF-backed slots alike, so turning a slot must not change what this
+    /// returns -- otherwise the turn lands on an image page twice.
     pub fn dominant_page_size(&self) -> PageSize {
         let buckets = self
             .plan
@@ -75,13 +80,6 @@ impl MergeDocument {
                     .page_sizes
                     .get(slot.page.0 as usize)
                     .copied()
-                    .map(|page_size| {
-                        if slot.rotation.swaps_axes() {
-                            page_size.turned()
-                        } else {
-                            page_size
-                        }
-                    })
                     .map(|page_size| (plan_index, page_size))
             })
             .fold(
@@ -344,15 +342,21 @@ mod tests {
     }
 
     #[test]
-    fn rotated_pdf_slots_are_counted_by_their_effective_size() {
+    fn rotating_a_slot_does_not_change_the_dominant_page_size() {
         let plan = plan_with(&[(10, 0), (10, 1)]);
         let turned = operations::rotate(&plan, &[SlotId(0), SlotId(1)], 1);
         let document = MergeDocument::new(turned, vec![pdf_source(10, vec![A4; 2])]);
 
-        assert_eq!(
-            document.dominant_page_size().size_class(),
-            A4.turned().size_class()
-        );
+        assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
+    }
+
+    #[test]
+    fn an_untouched_image_keeps_its_size_when_a_pdf_page_is_turned() {
+        let plan = plan_with(&[(10, 0), (30, 0)]);
+        let turned = operations::rotate(&plan, &[SlotId(0)], 1);
+        let document = MergeDocument::new(turned, vec![pdf_source(10, vec![A4]), image_source(30)]);
+
+        assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
     }
 
     proptest! {

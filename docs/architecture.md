@@ -226,18 +226,18 @@ breaks the TypeScript build rather than failing silently at runtime.
 
 ## Image pages
 
-An image page is fitted to the **dominant page size**: the most frequent effective size among the
-plan's PDF-backed slots, after each slot's rotation exchanges its axes when necessary. Ties are
-broken by first appearance in the plan, with A4 portrait used when the plan has no PDF pages at
-all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice, so the
-classification is independent of the order pages were added in.
+An image page is fitted to the **dominant page size**: the most frequent unrotated sheet size among
+the plan's PDF-backed slots. Ties are broken by first appearance in the plan, with A4 portrait used
+when the plan has no PDF pages at all. Sizes are classified by rounding each dimension to a cell on
+a 1 pt lattice, so the classification is independent of the order pages were added in.
 
-The image keeps its aspect ratio and the remaining sheet area is white. Its own rotation does not
-change `fit_to`: composition creates the sheet at the dominant size, places the image through the
-normal path, and then writes the rotation as the PDF page attribute. JPEG passthrough therefore
-remains untouched, and image-backed and PDF-backed slots follow the same turned-sheet rule. For a
-copied PDF page, the slot rotation is added to any rotation already declared by the source. An
-animated GIF contributes its first frame only.
+The image keeps its aspect ratio and the remaining sheet area is white. Image-backed and PDF-backed
+slots follow the same turned-sheet rule: composition creates an unrotated sheet and then writes the
+slot's rotation as the PDF page attribute. Turning both pages turns both sheets; turning only one
+page turns only that sheet, including in an image-only plan. A rotation never changes another
+page's size. JPEG passthrough therefore remains untouched. For a copied PDF page, the slot rotation
+is added to any rotation already declared by the source. An animated GIF contributes its first
+frame only.
 
 ## Error handling
 
