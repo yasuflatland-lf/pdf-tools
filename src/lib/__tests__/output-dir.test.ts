@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultOutputDir, joinPath, parentDir, rememberOutputDir } from "../output-dir";
+import { baseName, defaultOutputDir, joinPath, parentDir, rememberOutputDir } from "../output-dir";
 
 const { downloadDir } = vi.hoisted(() => ({
   downloadDir: vi.fn(() => Promise.resolve("/Users/me/Downloads")),
@@ -27,6 +27,17 @@ describe("output directory", () => {
     expect(parentDir("/a/b/c.pdf")).toBe("/a/b");
     expect(parentDir("C:\\a\\b\\c.pdf")).toBe("C:\\a\\b");
     expect(parentDir("c.pdf")).toBe("");
+  });
+
+  it.each([
+    ["/a/b/c.pdf", "c.pdf"],
+    ["C:\\a\\b\\c.pdf", "c.pdf"],
+    ["/a/b/", "b"],
+    ["C:\\a\\b\\", "b"],
+    ["c.pdf", "c.pdf"],
+    ["", ""],
+  ])("returns the base name of %j", (path, expected) => {
+    expect(baseName(path)).toBe(expected);
   });
 
   it("joins paths with the directory separator already in use", () => {
