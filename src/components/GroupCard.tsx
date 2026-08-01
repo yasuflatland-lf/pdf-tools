@@ -9,7 +9,13 @@ export function GroupCard({ onToggle, ...pageCardProps }: GroupCardProps) {
   const { collapsed, fileName } = pageCardProps;
 
   return (
-    <div className="relative">
+    // The collapsed card's Expand control is a full-preview overlay, so the
+    // pointer never rests inside `PageCard`'s own subtree and the hover marker
+    // there can never match. Marking the element that holds both the overlay
+    // and the card reveals the rotate buttons wherever on the card the pointer
+    // is -- `group-hover` matches any marked ancestor, so the inner marker
+    // keeps working for a card with no overlay.
+    <div className="group relative">
       <PageCard {...pageCardProps} />
       {onToggle &&
         (collapsed ? (

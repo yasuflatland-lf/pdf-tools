@@ -311,6 +311,24 @@ describe("PageGrid", () => {
     });
   });
 
+  // A collapsed group card -- the default state of every multi-page PDF -- is
+  // blanketed by the full-preview Expand overlay, so the pointer never rests on
+  // anything inside the card's own subtree. jsdom applies no stylesheet, so what
+  // the test can check is the one structural condition `.group:hover` needs: the
+  // marked ancestor has to contain the overlay as well as the buttons.
+  it("keeps the rotate controls inside the hover scope the expand overlay sits in", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLElement>('[aria-label="Expand 10.pdf"]');
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+
+    expect(rotate?.parentElement?.className).toContain("group-hover:opacity-100");
+    const hoverScope = expand?.closest(".group");
+    expect(hoverScope).not.toBeNull();
+    expect(hoverScope?.contains(rotate as HTMLElement)).toBe(true);
+  });
+
   it("renders no expand or collapse control for an ungrouped source", async () => {
     load(source(10, "ungrouped", 2), 2);
 
@@ -534,6 +552,37 @@ describe("PageGrid", () => {
     expect(container.querySelector('[role="option"]')?.getAttribute("aria-label")).toContain(
       "90° clockwise",
     );
+  });
+
+  // The card's frame is fixed, so a quarter turn -- which exchanges the image
+  // box's axes -- has to be paired with a scale, or the turned thumbnail is
+  // clipped by the preview it overflows.
+  it("scales a quarter-turned thumbnail down to fit the fixed preview area", async () => {
+    // The stubbed preview measures 800x600, so a turned 600x800 box fits only
+    // at min(800/600, 600/800); an upright or half-turned page needs no scale.
+    const expectedScale = new Map([
+      [0, "1"],
+      [1, "0.75"],
+      [2, "1"],
+      [3, "0.75"],
+    ]);
+
+    for (const [rotation, scale] of expectedScale) {
+      usePlanStore.getState().setSnapshot({
+        slots: [{ id: 1, source: 10, page: 0, rotation }],
+        sources: [source(10, "ungrouped", 1)],
+        can_undo: false,
+        can_redo: false,
+      });
+
+      const container = await renderGrid();
+      const thumbnail = container.querySelector("img");
+
+      expect(thumbnail?.style.transform).toContain(`rotate(${rotation * 90}deg)`);
+      expect(thumbnail?.parentElement?.style.getPropertyValue("--thumbnail-rotation-scale")).toBe(
+        scale,
+      );
+    }
   });
 
   it("sends exactly one reorder command when a card is dropped on another", async () => {
