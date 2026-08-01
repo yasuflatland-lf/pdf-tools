@@ -35,6 +35,8 @@ impl PdfEngine for PdfiumEngine {
                 });
             }
 
+            debug_assert_eq!(page_sizes.len() as u32, page_count);
+
             Ok(DocumentInfo {
                 page_count,
                 page_sizes,

@@ -71,14 +71,83 @@ pub enum SourceStatus {
 /// A source file and its probed metadata.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
-    pub id: SourceId,
-    pub path: PathBuf,
-    pub kind: SourceKind,
-    pub page_count: u32,
+    id: SourceId,
+    path: PathBuf,
+    kind: SourceKind,
+    page_count: u32,
     /// One entry per page for PDF sources. Empty for images: an image page is
     /// sized from the plan's dominant page size, never from the file itself.
-    pub page_sizes: Vec<PageSize>,
-    pub status: SourceStatus,
+    page_sizes: Vec<PageSize>,
+    status: SourceStatus,
+}
+
+impl SourceFile {
+    /// A PDF whose pages were probed successfully. `page_count` is taken from
+    /// the sizes rather than passed alongside them, so the two cannot disagree.
+    pub fn ready_pdf(id: SourceId, path: PathBuf, page_sizes: Vec<PageSize>) -> Self {
+        Self {
+            id,
+            path,
+            kind: SourceKind::Pdf,
+            page_count: page_sizes.len() as u32,
+            page_sizes,
+            status: SourceStatus::Ready,
+        }
+    }
+
+    /// An image that decoded. Every image is exactly one page, and its size
+    /// comes from the plan's dominant page size rather than from the file.
+    pub fn ready_image(id: SourceId, path: PathBuf) -> Self {
+        Self {
+            id,
+            path,
+            kind: SourceKind::Image,
+            page_count: 1,
+            page_sizes: Vec::new(),
+            status: SourceStatus::Ready,
+        }
+    }
+
+    /// A file the app will show but not merge. It contributes no slots, so it
+    /// has no pages and no page sizes -- the one shape every failure takes.
+    pub fn failed(id: SourceId, path: PathBuf, kind: SourceKind, status: SourceStatus) -> Self {
+        debug_assert!(
+            status != SourceStatus::Ready,
+            "a failed source cannot be Ready"
+        );
+        Self {
+            id,
+            path,
+            kind,
+            page_count: 0,
+            page_sizes: Vec::new(),
+            status,
+        }
+    }
+
+    pub fn id(&self) -> SourceId {
+        self.id
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn kind(&self) -> SourceKind {
+        self.kind
+    }
+
+    pub fn page_count(&self) -> u32 {
+        self.page_count
+    }
+
+    pub fn page_sizes(&self) -> &[PageSize] {
+        &self.page_sizes
+    }
+
+    pub fn status(&self) -> SourceStatus {
+        self.status
+    }
 }
 
 /// What `PdfEngine::probe` reports about a document.
@@ -147,5 +216,49 @@ mod tests {
             SourceKind::supported_extensions(),
             ["pdf", "jpg", "jpeg", "png", "gif"]
         );
+    }
+
+    #[test]
+    fn ready_pdf_derives_page_count_from_the_sizes() {
+        let page_sizes = vec![PageSize::A4_PORTRAIT; 2];
+        let source = SourceFile::ready_pdf(SourceId(7), "/a.pdf".into(), page_sizes.clone());
+
+        assert_eq!(source.id(), SourceId(7));
+        assert_eq!(source.path(), Path::new("/a.pdf"));
+        assert_eq!(source.kind(), SourceKind::Pdf);
+        assert_eq!(source.page_count(), 2);
+        assert_eq!(source.page_sizes(), page_sizes);
+        assert_eq!(source.status(), SourceStatus::Ready);
+    }
+
+    #[test]
+    fn ready_image_reports_one_page_and_no_sizes() {
+        let source = SourceFile::ready_image(SourceId(7), "/a.png".into());
+
+        assert_eq!(source.id(), SourceId(7));
+        assert_eq!(source.path(), Path::new("/a.png"));
+        assert_eq!(source.kind(), SourceKind::Image);
+        assert_eq!(source.page_count(), 1);
+        assert!(source.page_sizes().is_empty());
+        assert_eq!(source.status(), SourceStatus::Ready);
+    }
+
+    #[test]
+    fn failed_reports_no_pages_or_sizes_for_every_failure_status() {
+        let statuses = [
+            SourceStatus::Encrypted,
+            SourceStatus::Unreadable(UnreadableReason::UnsupportedFormat),
+            SourceStatus::Unreadable(UnreadableReason::Damaged),
+            SourceStatus::Unreadable(UnreadableReason::Missing),
+            SourceStatus::Unreadable(UnreadableReason::EngineUnavailable),
+        ];
+
+        for status in statuses {
+            let source = SourceFile::failed(SourceId(7), "/a.pdf".into(), SourceKind::Pdf, status);
+
+            assert_eq!(source.page_count(), 0);
+            assert!(source.page_sizes().is_empty());
+            assert_eq!(source.status(), status);
+        }
     }
 }

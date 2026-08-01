@@ -56,6 +56,32 @@ impl PdfEngine for WritingPdfEngine {
     }
 }
 
+struct RasterizeFailurePdfEngine {
+    inner: FakePdfEngine,
+}
+
+impl PdfEngine for RasterizeFailurePdfEngine {
+    fn probe(&self, src: &Path) -> Result<DocumentInfo, PdfError> {
+        self.inner.probe(src)
+    }
+
+    fn rasterize(
+        &self,
+        _src: &Path,
+        page: PageIndex,
+        _spec: RasterSpec,
+    ) -> Result<RasterImage, PdfError> {
+        Err(PdfError::PageOutOfRange {
+            page: page.0,
+            count: 1,
+        })
+    }
+
+    fn compose(&self, plan: &ComposePlan, dest: &Path) -> Result<MergeReport, PdfError> {
+        self.inner.compose(plan, dest)
+    }
+}
+
 struct NullProgress;
 
 impl ProgressSink for NullProgress {
@@ -195,8 +221,8 @@ fn state_with_missing_source() -> AppState {
         .sources()
         .first()
         .expect("the state should contain a source")
-        .path
-        .clone();
+        .path()
+        .to_path_buf();
     std::fs::remove_file(source).expect("source fixture should be removed");
     state
 }
@@ -430,14 +456,9 @@ fn rasterize_slot_returns_png_bytes_for_an_image_source() {
 #[test]
 fn rasterize_slot_surfaces_a_rasterize_failure() {
     let state = AppState::with_engines(
-        Arc::new(FakePdfEngine::new().with_document(
-            "/known.pdf",
-            DocumentInfo {
-                page_count: 1,
-                page_sizes: vec![],
-                encrypted: false,
-            },
-        )),
+        Arc::new(RasterizeFailurePdfEngine {
+            inner: FakePdfEngine::new().with_document("/known.pdf", pdf_info()),
+        }),
         Arc::new(FakeImageDecoder::new()),
     );
     let slot_id = add_sources(&state, &[PathBuf::from("/known.pdf")]);

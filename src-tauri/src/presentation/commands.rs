@@ -219,7 +219,7 @@ pub fn rasterize_slot_inner(state: &AppState, slot_id: u64, width: u32) -> Resul
             .find(|slot| slot.id == SlotId(slot_id))
             .ok_or_else(|| format!("slot {slot_id} was not found"))?;
         let source = session.document().source_of(slot);
-        (source.path.clone(), source.kind, slot.page)
+        (source.path().to_path_buf(), source.kind(), slot.page)
     };
 
     let image = match kind {
