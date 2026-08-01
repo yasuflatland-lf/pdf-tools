@@ -78,7 +78,7 @@ export function SortableCard({
       }}
       {...attributes}
       {...listeners}
-      aria-label={`Reorder ${label}, rotation ${rotation * 90}° clockwise`}
+      aria-label={`Reorder ${label}${rotation !== 0 ? `, rotation ${rotation * 90}° clockwise` : ""}`}
       aria-selected={selected === true}
     >
       {children}

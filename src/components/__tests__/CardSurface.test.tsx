@@ -148,4 +148,24 @@ describe("CardSurface", () => {
       expect(container.querySelectorAll('[role="option"]')).toHaveLength(3);
     }
   });
+
+  it("announces rotation only when the card is turned", async () => {
+    loadCards(1);
+    const container = await mount(<PageGrid />);
+    const option = container.querySelector('[role="option"]');
+
+    expect(option?.getAttribute("aria-label")).toBe("Reorder 10.pdf");
+
+    await act(async () => {
+      const current = usePlanStore.getState();
+      current.setSnapshot({
+        slots: [{ ...current.slots[0], rotation: 1 }],
+        sources: current.sources,
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    expect(option?.getAttribute("aria-label")).toBe("Reorder 10.pdf, rotation 90° clockwise");
+  });
 });

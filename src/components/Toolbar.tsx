@@ -79,6 +79,20 @@ export function Toolbar() {
       void performRedo();
       return true;
     },
+    "rotate-left": () => {
+      if (selectedSlots.size === 0 || isMerging) {
+        return false;
+      }
+      void performRotate(-1);
+      return true;
+    },
+    "rotate-right": () => {
+      if (selectedSlots.size === 0 || isMerging) {
+        return false;
+      }
+      void performRotate(1);
+      return true;
+    },
   });
 
   return (

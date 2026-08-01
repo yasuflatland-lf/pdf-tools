@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   removeSlots: vi.fn(),
   reorder: vi.fn(),
   revealItemInDir: vi.fn(),
+  rotateSlots: vi.fn(),
   save: vi.fn(),
   undo: vi.fn(),
   unlisten: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../../lib/tauri-api", () => ({
   redo: mocks.redo,
   removeSlots: mocks.removeSlots,
   reorder: mocks.reorder,
+  rotateSlots: mocks.rotateSlots,
   undo: mocks.undo,
 }));
 vi.mock("../../lib/output-dir", () => ({
@@ -134,6 +136,15 @@ function redoShortcut(): KeyboardEvent {
   });
 }
 
+function rotateRightShortcut(): KeyboardEvent {
+  return new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: "]",
+    metaKey: true,
+  });
+}
+
 async function click(button: HTMLButtonElement): Promise<void> {
   await act(async () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -165,6 +176,7 @@ describe("Toolbar", () => {
     mocks.redo.mockReset();
     mocks.removeSlots.mockReset();
     mocks.reorder.mockReset();
+    mocks.rotateSlots.mockReset();
     mocks.undo.mockReset();
 
     mocks.defaultOutputDir.mockResolvedValue("/Users/me/Downloads");
@@ -178,7 +190,7 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid", modalOpen: false });
+    useUiStore.setState({ viewMode: "grid", modalOpen: false, selectedSlots: new Set() });
   });
 
   afterEach(async () => {
@@ -191,7 +203,7 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid", modalOpen: false });
+    useUiStore.setState({ viewMode: "grid", modalOpen: false, selectedSlots: new Set() });
     vi.restoreAllMocks();
   });
 
@@ -264,17 +276,82 @@ describe("Toolbar", () => {
   });
 
   it("rotates the current selection from the toolbar controls", async () => {
-    const rotate = vi.spyOn(usePlanStore.getState(), "rotate").mockResolvedValue();
+    mocks.rotateSlots.mockResolvedValue({
+      slots: [],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
     useUiStore.getState().selectSlots([2, 4]);
     const container = await renderToolbar();
 
     await click(getButton(container, "Rotate left"));
     await click(getButton(container, "Rotate right"));
 
-    expect(rotate.mock.calls).toEqual([
+    expect(mocks.rotateSlots.mock.calls).toEqual([
       [[2, 4], -1],
       [[2, 4], 1],
     ]);
+  });
+
+  it("rotates the current selection from the Cmd+] shortcut", async () => {
+    loadOneSlot();
+    useUiStore.getState().selectSlots([1]);
+    mocks.rotateSlots.mockResolvedValue({
+      slots: [{ id: 1, source: 10, page: 0, rotation: 1 }],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    await renderToolbar();
+    const event = rotateRightShortcut();
+
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(mocks.rotateSlots).toHaveBeenCalledOnce();
+    expect(mocks.rotateSlots).toHaveBeenCalledWith([1], 1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("ignores the Cmd+] shortcut when the selection is empty", async () => {
+    loadOneSlot();
+    await renderToolbar();
+    const event = rotateRightShortcut();
+
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(mocks.rotateSlots).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("ignores the Cmd+] shortcut while merging", async () => {
+    const pending = deferred<MergeReportDto>();
+    loadOneSlot();
+    useUiStore.getState().selectSlots([1]);
+    mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
+    mocks.compose.mockReturnValue(pending.promise);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+    const event = rotateRightShortcut();
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(mocks.rotateSlots).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+
+    await act(async () => {
+      pending.resolve({ page_count: 1, bytes_written: 512 });
+      await pending.promise;
+    });
   });
 
   it("stores the snapshot returned by Undo", async () => {
