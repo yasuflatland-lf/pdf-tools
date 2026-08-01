@@ -108,7 +108,7 @@ fn absent_or_unparseable_exif_yields_no_orientation_and_remains_ready() {
     assert!(document
         .sources()
         .iter()
-        .all(|source| source.status == SourceStatus::Ready));
+        .all(|source| source.status() == SourceStatus::Ready));
     let absent = ImageCrateDecoder.decode_first_frame(&paths[0]).unwrap();
     let unparseable = ImageCrateDecoder.decode_first_frame(&paths[1]).unwrap();
     assert_eq!(
@@ -130,4 +130,26 @@ fn corrupt_images_report_unreadable() {
 fn absent_files_report_missing() {
     let err = ImageCrateDecoder.probe(Path::new("/nope.png")).unwrap_err();
     assert!(matches!(err, ImageError::Missing { .. }));
+}
+
+#[test]
+fn pdf_paths_report_unsupported_format() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("report.pdf");
+    std::fs::write(&path, b"fixture").unwrap();
+
+    let err = ImageCrateDecoder.probe(&path).unwrap_err();
+
+    assert!(matches!(err, ImageError::UnsupportedFormat { .. }));
+}
+
+#[test]
+fn text_paths_report_unsupported_format() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("notes.txt");
+    std::fs::write(&path, b"fixture").unwrap();
+
+    let err = ImageCrateDecoder.probe(&path).unwrap_err();
+
+    assert!(matches!(err, ImageError::UnsupportedFormat { .. }));
 }

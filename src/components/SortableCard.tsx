@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { rotationDegrees } from "../lib/rotation";
 import type { CardSelectionModifiers } from "./usePageCards";
 
 interface Transform {
@@ -94,7 +95,7 @@ export function SortableCard({
           shiftKey: event.shiftKey,
         });
       }}
-      aria-label={`Reorder ${label}${rotation !== 0 ? `, rotation ${rotation * 90}° clockwise` : ""}`}
+      aria-label={`Reorder ${label}${rotation !== 0 ? `, rotation ${rotationDegrees(rotation)}° clockwise` : ""}`}
       aria-selected={selected === true}
     >
       {children}
