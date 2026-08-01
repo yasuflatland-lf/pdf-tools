@@ -5,11 +5,12 @@ import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { useAddSources } from "../useAddSources";
 
-const { addSources, ask, expandPaths, open } = vi.hoisted(() => ({
+const { addSources, ask, expandPaths, open, supportedExtensions } = vi.hoisted(() => ({
   addSources: vi.fn(),
   ask: vi.fn(),
   expandPaths: vi.fn(),
   open: vi.fn(),
+  supportedExtensions: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask, open }));
@@ -17,6 +18,7 @@ vi.mock("../../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tauri-api")>()),
   addSources,
   expandPaths,
+  supportedExtensions,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -60,6 +62,8 @@ describe("useAddSources", () => {
     ask.mockReset();
     expandPaths.mockReset();
     open.mockReset();
+    supportedExtensions.mockReset();
+    supportedExtensions.mockResolvedValue(["pdf", "png"]);
     useUiStore.setState({ isIngesting: false, sourceNotice: null });
   });
 
@@ -75,7 +79,7 @@ describe("useAddSources", () => {
     vi.restoreAllMocks();
   });
 
-  it("asks the picker for supported files only, then adds what it expands", async () => {
+  it("gets the picker filter from the supported extensions command", async () => {
     open.mockResolvedValue(["/a/report.pdf"]);
     expandPaths.mockResolvedValue(["/a/report.pdf"]);
     const controller = await renderHook();
@@ -86,8 +90,9 @@ describe("useAddSources", () => {
 
     expect(open).toHaveBeenCalledWith({
       multiple: true,
-      filters: [{ name: "PDFs and images", extensions: ["pdf", "jpg", "jpeg", "png", "gif"] }],
+      filters: [{ name: "PDFs and images", extensions: ["pdf", "png"] }],
     });
+    expect(supportedExtensions).toHaveBeenCalledOnce();
     expect(expandPaths).toHaveBeenCalledWith(["/a/report.pdf"]);
     expect(addSources).toHaveBeenCalledWith(["/a/report.pdf"]);
   });
@@ -132,7 +137,21 @@ describe("useAddSources", () => {
     expect(addSources).not.toHaveBeenCalled();
   });
 
-  it("falls back to a plural notice when several folders came up empty", async () => {
+  it("reports a drop containing only unsupported files without changing the plan", async () => {
+    expandPaths.mockResolvedValue([]);
+    const setSnapshot = vi.spyOn(usePlanStore.getState(), "setSnapshot");
+    const controller = await renderHook();
+
+    await act(async () => {
+      await controller().addPaths(["/a/notes.txt", "/a/archive.zip"]);
+    });
+
+    expect(useUiStore.getState().sourceNotice).toBe("No PDFs or images found in the selection.");
+    expect(addSources).not.toHaveBeenCalled();
+    expect(setSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("uses a selection notice when several inputs came up empty", async () => {
     expandPaths.mockResolvedValue([]);
     const controller = await renderHook();
 
@@ -140,9 +159,7 @@ describe("useAddSources", () => {
       await controller().addPaths(["/a/one", "/a/two"]);
     });
 
-    expect(useUiStore.getState().sourceNotice).toBe(
-      "No PDFs or images found in the selected folders.",
-    );
+    expect(useUiStore.getState().sourceNotice).toBe("No PDFs or images found in the selection.");
   });
 
   it("confirms before adding more files than the threshold", async () => {

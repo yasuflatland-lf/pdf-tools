@@ -1,13 +1,10 @@
 import { useLayoutEffect, useRef } from "react";
+import { rotationDegrees } from "../lib/rotation";
 
 interface RotatedThumbnailProps {
   alt: string;
   rotation: number;
   src: string;
-}
-
-function normalizedQuarterTurns(rotation: number): number {
-  return ((rotation % 4) + 4) % 4;
 }
 
 /**
@@ -16,8 +13,9 @@ function normalizedQuarterTurns(rotation: number): number {
  * from the fixed preview keeps the transformed box inside it.
  */
 export function RotatedThumbnail({ alt, rotation, src }: RotatedThumbnailProps) {
+  // `rotation` arrives from PageSlotDto, which Rust writes with
+  // Rotation::quarter_turns(): already reduced to 0..4.
   const previewRef = useRef<HTMLDivElement>(null);
-  const quarterTurns = normalizedQuarterTurns(rotation);
 
   useLayoutEffect(() => {
     const preview = previewRef.current;
@@ -28,7 +26,7 @@ export function RotatedThumbnail({ alt, rotation, src }: RotatedThumbnailProps) 
     const fit = () => {
       const { clientHeight, clientWidth } = preview;
       const scale =
-        quarterTurns % 2 === 1 && clientHeight > 0 && clientWidth > 0
+        rotation % 2 === 1 && clientHeight > 0 && clientWidth > 0
           ? Math.min(1, clientWidth / clientHeight, clientHeight / clientWidth)
           : 1;
       preview.style.setProperty("--thumbnail-rotation-scale", String(scale));
@@ -42,7 +40,7 @@ export function RotatedThumbnail({ alt, rotation, src }: RotatedThumbnailProps) 
     const observer = new ResizeObserver(fit);
     observer.observe(preview);
     return () => observer.disconnect();
-  }, [quarterTurns]);
+  }, [rotation]);
 
   return (
     <div ref={previewRef} className="grid h-full w-full place-items-center overflow-hidden">
@@ -51,7 +49,7 @@ export function RotatedThumbnail({ alt, rotation, src }: RotatedThumbnailProps) 
         src={src}
         alt={alt}
         style={{
-          transform: `rotate(${quarterTurns * 90}deg) scale(var(--thumbnail-rotation-scale, 1))`,
+          transform: `rotate(${rotationDegrees(rotation)}deg) scale(var(--thumbnail-rotation-scale, 1))`,
           transformOrigin: "center",
         }}
       />

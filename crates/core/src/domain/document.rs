@@ -23,7 +23,7 @@ impl MergeDocument {
         let slots = plan
             .slots()
             .iter()
-            .filter(|slot| sources.iter().any(|source| source.id == slot.source))
+            .filter(|slot| sources.iter().any(|source| source.id() == slot.source))
             .cloned()
             .collect();
 
@@ -52,7 +52,7 @@ impl MergeDocument {
     pub fn source_of(&self, slot: &PageSlot) -> &SourceFile {
         self.sources
             .iter()
-            .find(|source| source.id == slot.source)
+            .find(|source| source.id() == slot.source)
             .expect("MergeDocument construction guarantees every slot has a source")
     }
 
@@ -60,6 +60,11 @@ impl MergeDocument {
     /// the document's PDF-backed slots. Ties go to whichever size appears
     /// first in the plan. Falls back to A4 portrait when the plan contains no
     /// PDF pages. Sizes are classified on a one-point lattice.
+    ///
+    /// This is a **sheet** size, taken before any rotation. Composition writes
+    /// the slot's rotation as the page's `/Rotate` attribute, for image-backed
+    /// and PDF-backed slots alike, so turning a slot must not change what this
+    /// returns -- otherwise the turn lands on an image page twice.
     pub fn dominant_page_size(&self) -> PageSize {
         let buckets = self
             .plan
@@ -68,20 +73,13 @@ impl MergeDocument {
             .enumerate()
             .filter_map(|(plan_index, slot)| {
                 let source = self.source_of(slot);
-                if source.kind != SourceKind::Pdf {
+                if source.kind() != SourceKind::Pdf {
                     return None;
                 }
                 source
-                    .page_sizes
+                    .page_sizes()
                     .get(slot.page.0 as usize)
                     .copied()
-                    .map(|page_size| {
-                        if slot.rotation.swaps_axes() {
-                            page_size.turned()
-                        } else {
-                            page_size
-                        }
-                    })
                     .map(|page_size| (plan_index, page_size))
             })
             .fold(
@@ -117,13 +115,12 @@ mod tests {
     use super::*;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
     use crate::domain::operations;
-    use crate::domain::source::SourceStatus;
 
     const A4: PageSize = PageSize::A4_PORTRAIT;
-    const LETTER: PageSize = PageSize {
-        width_pt: 612.0,
-        height_pt: 792.0,
-    };
+
+    fn letter() -> PageSize {
+        PageSize::new(612.0, 792.0).expect("Letter page size should be valid")
+    }
 
     fn plan_with(pages: &[(u64, u32)]) -> MergePlan {
         MergePlan::new(
@@ -141,27 +138,13 @@ mod tests {
     }
 
     fn pdf_source(id: u64, page_sizes: Vec<PageSize>) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path: PathBuf::new(),
-            kind: SourceKind::Pdf,
-            page_count: page_sizes.len() as u32,
-            page_sizes,
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_pdf(SourceId(id), PathBuf::new(), page_sizes)
     }
 
-    /// The single page size is deliberately not A4 so that a test expecting the
-    /// A4 fallback fails if image sources were ever counted.
+    /// An image carries no page size at all, so `dominant_page_size` has
+    /// nothing to count even before it filters image sources out by kind.
     fn image_source(id: u64) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path: PathBuf::new(),
-            kind: SourceKind::Image,
-            page_count: 1,
-            page_sizes: vec![LETTER],
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_image(SourceId(id), PathBuf::new())
     }
 
     fn document_with(pages: &[(u64, u32)], sources: Vec<SourceFile>) -> MergeDocument {
@@ -170,9 +153,8 @@ mod tests {
 
     fn page_sizes_with_shuffle() -> impl Strategy<Value = (Vec<PageSize>, Vec<usize>)> {
         let page_size = || {
-            (1.0f32..2000.0, 1.0f32..2000.0).prop_map(|(width_pt, height_pt)| PageSize {
-                width_pt,
-                height_pt,
+            (1.0f32..2000.0, 1.0f32..2000.0).prop_map(|(width_pt, height_pt)| {
+                PageSize::new(width_pt, height_pt).expect("generated page size should be valid")
             })
         };
 
@@ -209,7 +191,7 @@ mod tests {
         let document = document_with(&[(10, 0)], vec![pdf_source(10, vec![A4])]);
 
         assert_eq!(
-            document.source_of(&document.plan().slots()[0]).id,
+            document.source_of(&document.plan().slots()[0]).id(),
             SourceId(10)
         );
     }
@@ -219,29 +201,29 @@ mod tests {
         // Two A4 pages, one Letter page.
         let document = document_with(
             &[(10, 0), (10, 1), (10, 2)],
-            vec![pdf_source(10, vec![A4, A4, LETTER])],
+            vec![pdf_source(10, vec![A4, A4, letter()])],
         );
         assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
     }
 
     #[test]
     fn a_tie_is_broken_by_first_appearance_in_the_plan() {
-        let document = document_with(&[(10, 0), (10, 1)], vec![pdf_source(10, vec![LETTER, A4])]);
+        let document = document_with(
+            &[(10, 0), (10, 1)],
+            vec![pdf_source(10, vec![letter(), A4])],
+        );
         assert_eq!(
             document.dominant_page_size().size_class(),
-            LETTER.size_class()
+            letter().size_class()
         );
     }
 
     #[test]
     fn sizes_in_the_same_lattice_cell_are_counted_together() {
-        let almost_a4 = PageSize {
-            width_pt: 595.4,
-            height_pt: 841.6,
-        };
+        let almost_a4 = PageSize::new(595.4, 841.6).expect("almost-A4 page size should be valid");
         let document = document_with(
             &[(10, 0), (10, 1), (10, 2)],
-            vec![pdf_source(10, vec![A4, almost_a4, LETTER])],
+            vec![pdf_source(10, vec![A4, almost_a4, letter()])],
         );
         // A4 and almost-A4 form one bucket of 2, beating Letter's 1.
         assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
@@ -249,13 +231,10 @@ mod tests {
 
     #[test]
     fn a_lattice_cell_of_near_equal_sizes_outvotes_an_earlier_lone_size() {
-        let almost_a4 = PageSize {
-            width_pt: 595.4,
-            height_pt: 841.6,
-        };
+        let almost_a4 = PageSize::new(595.4, 841.6).expect("almost-A4 page size should be valid");
         let document = document_with(
             &[(10, 0), (10, 1), (10, 2)],
-            vec![pdf_source(10, vec![LETTER, A4, almost_a4])],
+            vec![pdf_source(10, vec![letter(), A4, almost_a4])],
         );
         // Letter appears first but stands alone; A4 and almost-A4 share a bucket.
         assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
@@ -263,37 +242,22 @@ mod tests {
 
     #[test]
     fn the_winning_class_returns_its_first_exact_page_size() {
-        let first = PageSize {
-            width_pt: 595.2,
-            height_pt: 841.6,
-        };
-        let same_class = PageSize {
-            width_pt: 595.4,
-            height_pt: 841.8,
-        };
+        let first = PageSize::new(595.2, 841.6).expect("first page size should be valid");
+        let same_class = PageSize::new(595.4, 841.8).expect("same-class page size should be valid");
         let document = document_with(
             &[(10, 0), (10, 1), (10, 2)],
-            vec![pdf_source(10, vec![first, same_class, LETTER])],
+            vec![pdf_source(10, vec![first, same_class, letter()])],
         );
 
-        assert_eq!(document.dominant_page_size(), first);
+        assert_eq!(document.dominant_page_size().width_pt(), 595.2);
     }
 
     #[test]
     fn every_permutation_of_the_non_transitive_witness_has_the_same_dominant_class() {
         let page_sizes = vec![
-            PageSize {
-                width_pt: 595.0,
-                height_pt: 800.0,
-            },
-            PageSize {
-                width_pt: 595.5,
-                height_pt: 800.0,
-            },
-            PageSize {
-                width_pt: 596.0,
-                height_pt: 800.0,
-            },
+            PageSize::new(595.0, 800.0).expect("page size should be valid"),
+            PageSize::new(595.5, 800.0).expect("page size should be valid"),
+            PageSize::new(596.0, 800.0).expect("page size should be valid"),
         ];
         let permutations = [
             [0, 1, 2],
@@ -303,11 +267,9 @@ mod tests {
             [2, 0, 1],
             [2, 1, 0],
         ];
-        let expected = PageSize {
-            width_pt: 596.0,
-            height_pt: 800.0,
-        }
-        .size_class();
+        let expected = PageSize::new(596.0, 800.0)
+            .expect("expected page size should be valid")
+            .size_class();
 
         for permutation in permutations {
             let pages = permutation.map(|page_index| (10, page_index));
@@ -336,23 +298,29 @@ mod tests {
     #[test]
     fn only_slots_present_in_the_plan_are_counted() {
         // The source knows about 3 pages, but only its Letter page is in the plan.
-        let document = document_with(&[(10, 2)], vec![pdf_source(10, vec![A4, A4, LETTER])]);
+        let document = document_with(&[(10, 2)], vec![pdf_source(10, vec![A4, A4, letter()])]);
         assert_eq!(
             document.dominant_page_size().size_class(),
-            LETTER.size_class()
+            letter().size_class()
         );
     }
 
     #[test]
-    fn rotated_pdf_slots_are_counted_by_their_effective_size() {
+    fn rotating_a_slot_does_not_change_the_dominant_page_size() {
         let plan = plan_with(&[(10, 0), (10, 1)]);
         let turned = operations::rotate(&plan, &[SlotId(0), SlotId(1)], 1);
         let document = MergeDocument::new(turned, vec![pdf_source(10, vec![A4; 2])]);
 
-        assert_eq!(
-            document.dominant_page_size().size_class(),
-            A4.turned().size_class()
-        );
+        assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
+    }
+
+    #[test]
+    fn an_untouched_image_keeps_its_size_when_a_pdf_page_is_turned() {
+        let plan = plan_with(&[(10, 0), (30, 0)]);
+        let turned = operations::rotate(&plan, &[SlotId(0)], 1);
+        let document = MergeDocument::new(turned, vec![pdf_source(10, vec![A4]), image_source(30)]);
+
+        assert_eq!(document.dominant_page_size().size_class(), A4.size_class());
     }
 
     proptest! {

@@ -117,8 +117,8 @@ pub(super) fn compose(
                     let mut page = destination
                         .pages_mut()
                         .create_page_at_end(PdfPagePaperSize::Custom(
-                            PdfPoints::new(fit_to.width_pt),
-                            PdfPoints::new(fit_to.height_pt),
+                            PdfPoints::new(fit_to.width_pt()),
+                            PdfPoints::new(fit_to.height_pt()),
                         ))
                         .map_err(|error| image_composition_error(path, error))?;
                     let background = PdfPagePathObject::new_rect(
@@ -126,8 +126,8 @@ pub(super) fn compose(
                         PdfRect::new(
                             PdfPoints::ZERO,
                             PdfPoints::ZERO,
-                            PdfPoints::new(fit_to.height_pt),
-                            PdfPoints::new(fit_to.width_pt),
+                            PdfPoints::new(fit_to.height_pt()),
+                            PdfPoints::new(fit_to.width_pt()),
                         ),
                         None,
                         None,
@@ -196,13 +196,13 @@ struct Placement {
 /// Scales an image's intrinsic pixel size to fit the page, preserving the aspect
 /// ratio and centring the result.
 fn place(fit_to: PageSize, width_px: u32, height_px: u32) -> Placement {
-    let scale = (fit_to.width_pt / width_px as f32).min(fit_to.height_pt / height_px as f32);
+    let scale = (fit_to.width_pt() / width_px as f32).min(fit_to.height_pt() / height_px as f32);
     let width = width_px as f32 * scale;
     let height = height_px as f32 * scale;
 
     Placement {
-        left: (fit_to.width_pt - width) / 2.0,
-        bottom: (fit_to.height_pt - height) / 2.0,
+        left: (fit_to.width_pt() - width) / 2.0,
+        bottom: (fit_to.height_pt() - height) / 2.0,
         width,
         height,
     }
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn a_wide_image_fills_the_page_width_and_is_centred_vertically() {
         let placement = place(PageSize::A4_PORTRAIT, 800, 600);
-        assert!((placement.width - PageSize::A4_PORTRAIT.width_pt).abs() < 0.01);
+        assert!((placement.width - PageSize::A4_PORTRAIT.width_pt()).abs() < 0.01);
         assert!((placement.left - 0.0).abs() < 0.01);
         assert!(placement.bottom > 0.0);
     }
@@ -369,7 +369,7 @@ mod tests {
     #[test]
     fn a_tall_image_fills_the_page_height_and_is_centred_horizontally() {
         let placement = place(PageSize::A4_PORTRAIT, 300, 900);
-        assert!((placement.height - PageSize::A4_PORTRAIT.height_pt).abs() < 0.01);
+        assert!((placement.height - PageSize::A4_PORTRAIT.height_pt()).abs() < 0.01);
         assert!((placement.bottom - 0.0).abs() < 0.01);
         assert!(placement.left > 0.0);
     }
@@ -383,10 +383,7 @@ mod tests {
     #[test]
     fn a_dense_image_is_capped_to_its_placement_at_200_dpi() {
         let placement = place(
-            PageSize {
-                width_pt: 72.0,
-                height_pt: 72.0,
-            },
+            PageSize::new(72.0, 72.0).expect("page size should be valid"),
             400,
             400,
         );
@@ -404,10 +401,7 @@ mod tests {
     #[test]
     fn capping_preserves_the_aspect_ratio() {
         let placement = place(
-            PageSize {
-                width_pt: 72.0,
-                height_pt: 72.0,
-            },
+            PageSize::new(72.0, 72.0).expect("page size should be valid"),
             800,
             600,
         );
