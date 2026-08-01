@@ -139,6 +139,24 @@ describe("AppShell", () => {
     expect(container.querySelector('[data-view-mode="list"]')).toBeNull();
   });
 
+  it("offers both pickers in the empty state", async () => {
+    const container = await renderShell();
+
+    expect(getButton(container, "Choose files…").disabled).toBe(false);
+    expect(getButton(container, "Choose folder…").disabled).toBe(false);
+  });
+
+  it("disables both pickers while an add is in flight", async () => {
+    const container = await renderShell();
+
+    await act(async () => {
+      useUiStore.getState().setIngesting(true);
+    });
+
+    expect(getButton(container, "Choose files…").disabled).toBe(true);
+    expect(getButton(container, "Choose folder…").disabled).toBe(true);
+  });
+
   it("leaves Delete alone when the selection is empty", async () => {
     useUiStore.getState().clearSelection();
     await renderShell();

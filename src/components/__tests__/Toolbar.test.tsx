@@ -11,11 +11,13 @@ import { Toolbar } from "../Toolbar";
 
 const mocks = vi.hoisted(() => ({
   addSources: vi.fn(),
+  ask: vi.fn(),
   compose: vi.fn(),
   defaultOutputDir: vi.fn(),
   joinPath: vi.fn((dir: string, name: string) => `${dir}/${name}`),
   onComposeProgress: vi.fn(),
   onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
+  open: vi.fn(),
   parentDir: vi.fn((path: string) => path.slice(0, path.lastIndexOf("/"))),
   progress: {} as { handler?: (progress: ComposeProgressDto) => void },
   rasterizeSlot: vi.fn(),
@@ -47,7 +49,11 @@ vi.mock("../../lib/output-dir", () => ({
   parentDir: mocks.parentDir,
   rememberOutputDir: mocks.rememberOutputDir,
 }));
-vi.mock("@tauri-apps/plugin-dialog", () => ({ save: mocks.save }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  ask: mocks.ask,
+  open: mocks.open,
+  save: mocks.save,
+}));
 vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir: mocks.revealItemInDir }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent: mocks.onDragDropEvent }),

@@ -4,6 +4,7 @@ import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
 import { useSnapshotSync } from "../store/useSnapshotSync";
+import { AddSourcesButtons } from "./AddSourcesButtons";
 import { DropZone } from "./DropZone";
 import { SourceErrorCard } from "./PageCard";
 import { PageGrid } from "./PageGrid";
@@ -80,6 +81,7 @@ export function AppShell() {
                   <p className="mt-1 text-sm text-slate-500">
                     Source files will appear in this document.
                   </p>
+                  <AddSourcesButtons />
                 </div>
               </div>
             ) : viewMode === "grid" ? (
