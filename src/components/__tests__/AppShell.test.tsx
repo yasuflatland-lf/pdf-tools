@@ -5,9 +5,10 @@ import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { AppShell } from "../AppShell";
 
-const { invoke, onDragDropEvent, removeSlots } = vi.hoisted(() => ({
+const { invoke, onDragDropEvent, open, removeSlots } = vi.hoisted(() => ({
   invoke: vi.fn(),
   onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
+  open: vi.fn(),
   removeSlots: vi.fn(),
 }));
 
@@ -15,7 +16,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent }),
 }));
-vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn(), open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn(), open }));
 vi.mock("../../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tauri-api")>()),
   removeSlots,
@@ -88,6 +89,9 @@ describe("AppShell", () => {
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    open.mockReset();
+    // A cancelled picker keeps a click from running the real add procedure.
+    open.mockResolvedValue(null);
     removeSlots.mockReset();
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
@@ -144,6 +148,22 @@ describe("AppShell", () => {
 
     expect(getButton(container, "Choose files…").disabled).toBe(false);
     expect(getButton(container, "Choose folder…").disabled).toBe(false);
+  });
+
+  it("sends each picker to its own dialog", async () => {
+    const container = await renderShell();
+
+    await click(getButton(container, "Choose files…"));
+
+    expect(open).toHaveBeenLastCalledWith({
+      multiple: true,
+      filters: [{ name: "PDFs and images", extensions: ["pdf", "jpg", "jpeg", "png", "gif"] }],
+    });
+
+    await click(getButton(container, "Choose folder…"));
+
+    expect(open).toHaveBeenLastCalledWith({ directory: true });
+    expect(open).toHaveBeenCalledTimes(2);
   });
 
   it("disables both pickers while an add is in flight", async () => {
