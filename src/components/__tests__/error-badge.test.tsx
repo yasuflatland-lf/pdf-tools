@@ -1,6 +1,6 @@
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ErrorBadge } from "../ErrorBadge";
 import { SourceErrorCard } from "../PageCard";
 
@@ -67,5 +67,28 @@ describe("ErrorBadge", () => {
     expect(card?.classList.contains("opacity-60")).toBe(true);
     expect(container.textContent).toContain("damaged.pdf");
     expect(container.textContent).toContain("This file is damaged and could not be read");
+  });
+
+  it("stops a keydown on the Remove control from reaching an ancestor", async () => {
+    const onKeyDown = vi.fn();
+    const container = await render(
+      <div onKeyDown={onKeyDown}>
+        <SourceErrorCard
+          fileName="damaged.pdf"
+          onDismiss={() => {}}
+          status={{ kind: "unreadable", reason: "damaged" }}
+        />
+      </div>,
+    );
+    const remove = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Remove damaged.pdf"]',
+    );
+    if (!remove) throw new Error("Expected the Remove button");
+
+    await act(async () => {
+      remove.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Delete" }));
+    });
+
+    expect(onKeyDown).not.toHaveBeenCalled();
   });
 });

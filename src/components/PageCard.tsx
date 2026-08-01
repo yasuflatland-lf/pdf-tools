@@ -138,10 +138,12 @@ export function SourceErrorCard({
             </span>
             <span>Not merged</span>
           </div>
+          {/* The keydown is stopped so the control never steers the shell behind it. */}
           <button
             aria-label={`Remove ${fileName}`}
             className={CARD_CONTROL_CLASS_NAME}
             onClick={onDismiss}
+            onKeyDown={(event) => event.stopPropagation()}
             type="button"
           >
             Remove

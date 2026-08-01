@@ -292,16 +292,21 @@ fn remove_source_returns_a_snapshot_without_that_source() {
 
 #[test]
 fn removing_an_unknown_source_returns_the_unchanged_snapshot_without_history() {
-    let state = AppState::with_engines(
-        Arc::new(FakePdfEngine::new()),
-        Arc::new(FakeImageDecoder::new()),
-    );
+    // The document has to hold something for the comparison below to protect
+    // anything: against an empty one, a command that wiped the plan would pass.
+    let state = state_with_pdf_and_image();
     let before = snapshot_of(&state);
+    assert_eq!(before.sources.len(), 2);
+    assert_eq!(before.slots.len(), 4);
 
     let snapshot = remove_source_inner(&state, u64::MAX).unwrap();
 
     assert_eq!(snapshot, before);
-    assert!(!snapshot.can_undo);
+    // The no-op parked no history entry, so this single Undo reaches the image
+    // add rather than undoing the removal that never happened.
+    let undone = undo_inner(&state).unwrap();
+    assert_eq!(undone.sources.len(), 1);
+    assert_eq!(undone.slots.len(), 3);
 }
 
 #[test]

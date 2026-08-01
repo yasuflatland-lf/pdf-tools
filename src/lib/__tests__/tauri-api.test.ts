@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
-import { addSources, reorder, rotateSlots } from "../tauri-api";
+import { addSources, removeSource, reorder, rotateSlots } from "../tauri-api";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -40,6 +40,19 @@ describe("tauri-api", () => {
       fromEnd: 2,
       to: 3,
     });
+  });
+
+  it("passes the camel-cased source id to the remove_source command", async () => {
+    const snapshot: PlanSnapshot = {
+      slots: [],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockResolvedValue(snapshot);
+
+    await expect(removeSource(7)).resolves.toBe(snapshot);
+    expect(invoke).toHaveBeenCalledWith("remove_source", { sourceId: 7 });
   });
 
   it("passes camel-cased slot ids and the delta to the rotate_slots command", async () => {
