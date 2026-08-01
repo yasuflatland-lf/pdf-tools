@@ -50,6 +50,10 @@ publisher signature, so both operating systems warn the first time you open the 
 open it once from Finder with **right-click → Open**; on Windows, choose **More info → Run
 anyway** in the SmartScreen dialog. After that it launches normally.
 
+## Architecture
+
+![PDF Tools architecture](docs/images/architecture.png)
+
 ## Development
 
 Requires [mise](https://mise.jdx.dev/), which pins the Rust, Node and pnpm versions.
