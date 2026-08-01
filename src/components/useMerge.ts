@@ -2,6 +2,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { useCallback, useState } from "react";
 import type { ComposeProgressDto } from "../bindings/ComposeProgressDto";
 import type { MergeReportDto } from "../bindings/MergeReportDto";
+import { errorMessage } from "../lib/error-message";
 import { defaultOutputDir, joinPath, parentDir, rememberOutputDir } from "../lib/output-dir";
 import { compose, onComposeProgress } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
@@ -24,16 +25,6 @@ interface MergeController {
   result: MergeResult | null;
   failure: MergeFailure | null;
   start: () => Promise<void>;
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
 
 /**

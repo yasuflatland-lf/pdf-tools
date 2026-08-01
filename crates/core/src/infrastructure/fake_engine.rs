@@ -13,6 +13,7 @@ use crate::domain::source::{DocumentInfo, ImageInfo};
 pub struct FakePdfEngine {
     documents: HashMap<PathBuf, Result<DocumentInfo, PdfError>>,
     last_composed: Mutex<Option<ComposePlan>>,
+    last_rasterized: Mutex<Option<(PathBuf, PageIndex, u32)>>,
 }
 
 impl FakePdfEngine {
@@ -20,6 +21,7 @@ impl FakePdfEngine {
         Self {
             documents: HashMap::new(),
             last_composed: Mutex::new(None),
+            last_rasterized: Mutex::new(None),
         }
     }
 
@@ -36,6 +38,16 @@ impl FakePdfEngine {
     /// Returns the last compose plan handed to this engine.
     pub fn last_composed(&self) -> Option<ComposePlan> {
         self.last_composed
+            .lock()
+            .expect("fake PDF engine mutex should not be poisoned")
+            .clone()
+    }
+
+    /// Returns the last rasterize request handed to this engine as the source
+    /// path, the page asked for, and the requested width in pixels. Recorded
+    /// even when the request then fails, so a test can assert what was asked.
+    pub fn last_rasterized(&self) -> Option<(PathBuf, PageIndex, u32)> {
+        self.last_rasterized
             .lock()
             .expect("fake PDF engine mutex should not be poisoned")
             .clone()
@@ -63,6 +75,12 @@ impl PdfEngine for FakePdfEngine {
         page: PageIndex,
         spec: RasterSpec,
     ) -> Result<RasterImage, PdfError> {
+        *self
+            .last_rasterized
+            .lock()
+            .expect("fake PDF engine mutex should not be poisoned") =
+            Some((src.to_path_buf(), page, spec.target_width_px));
+
         let info = self.probe(src)?;
         if page.0 >= info.page_count {
             return Err(PdfError::PageOutOfRange {
@@ -290,6 +308,27 @@ mod tests {
             .unwrap();
         assert_eq!(image.width, 200);
         assert_eq!(image.rgba.len(), (image.width * image.height * 4) as usize);
+    }
+
+    #[test]
+    fn rasterize_records_the_request_it_received() {
+        let engine = FakePdfEngine::new();
+
+        // Unregistered on purpose: the request is recorded even when it fails.
+        assert!(engine
+            .rasterize(
+                Path::new("/a.pdf"),
+                PageIndex(3),
+                RasterSpec {
+                    target_width_px: 200,
+                },
+            )
+            .is_err());
+
+        assert_eq!(
+            engine.last_rasterized(),
+            Some((PathBuf::from("/a.pdf"), PageIndex(3), 200))
+        );
     }
 
     #[test]
