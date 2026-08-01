@@ -9,12 +9,20 @@ export async function addSources(paths: string[]): Promise<PlanSnapshot> {
 }
 
 /**
- * Resolves folders to the files inside them and passes everything else
- * through. Separate from `addSources` so the count can be seen, and asked
- * about, before anything enters the plan.
+ * Resolves folders to supported files and drops unsupported direct inputs.
+ * Separate from `addSources` so the count can be seen, and asked about, before
+ * anything enters the plan.
  */
 export async function expandPaths(paths: string[]): Promise<string[]> {
   return invoke<string[]>("expand_paths", { paths });
+}
+
+/**
+ * The extensions the picker offers. Fetched rather than hard-coded so the
+ * filter and the merge rule cannot drift apart.
+ */
+export async function supportedExtensions(): Promise<string[]> {
+  return invoke<string[]>("supported_extensions");
 }
 
 export async function rasterizeSlot(slotId: number, width: number): Promise<ArrayBuffer> {

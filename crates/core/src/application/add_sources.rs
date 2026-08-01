@@ -34,14 +34,20 @@ impl AddSources<'_> {
 
             let source = match kind {
                 SourceKind::Pdf => match self.pdf.probe(path) {
-                    Ok(info) if info.encrypted => SourceFile {
-                        id: source_id,
-                        path: path.clone(),
-                        kind,
-                        page_count: 0,
-                        page_sizes: Vec::new(),
-                        status: SourceStatus::Encrypted,
-                    },
+                    Ok(info) if info.encrypted => {
+                        SourceFile::failed(source_id, path.clone(), kind, SourceStatus::Encrypted)
+                    }
+                    Ok(info) if info.page_count != info.page_sizes.len() as u32 => {
+                        let error = PdfError::Unreadable {
+                            path: path.clone(),
+                            reason: format!(
+                                "probe reported {} pages but {} page sizes",
+                                info.page_count,
+                                info.page_sizes.len()
+                            ),
+                        };
+                        failed_pdf(&error, source_id, path, kind)
+                    }
                     Ok(info) => {
                         new_slots.extend((0..info.page_count).map(|page| PageSlot {
                             id: ids.next_slot(),
@@ -49,48 +55,9 @@ impl AddSources<'_> {
                             page: PageIndex(page),
                             rotation: Default::default(),
                         }));
-                        SourceFile {
-                            id: source_id,
-                            path: path.clone(),
-                            kind,
-                            page_count: info.page_count,
-                            page_sizes: info.page_sizes,
-                            status: SourceStatus::Ready,
-                        }
+                        SourceFile::ready_pdf(source_id, path.clone(), info.page_sizes)
                     }
-                    Err(error) => match error {
-                        PdfError::Encrypted { .. } => SourceFile {
-                            id: source_id,
-                            path: path.clone(),
-                            kind,
-                            page_count: 0,
-                            page_sizes: Vec::new(),
-                            status: SourceStatus::Encrypted,
-                        },
-                        error @ PdfError::EngineUnavailable(_) => unreadable_source(
-                            &error,
-                            source_id,
-                            path,
-                            kind,
-                            UnreadableReason::EngineUnavailable,
-                        ),
-                        error @ PdfError::Missing { .. } => unreadable_source(
-                            &error,
-                            source_id,
-                            path,
-                            kind,
-                            UnreadableReason::Missing,
-                        ),
-                        error @ (PdfError::Unreadable { .. }
-                        | PdfError::PageOutOfRange { .. }
-                        | PdfError::WriteFailed { .. }) => unreadable_source(
-                            &error,
-                            source_id,
-                            path,
-                            kind,
-                            UnreadableReason::Damaged,
-                        ),
-                    },
+                    Err(error) => failed_pdf(&error, source_id, path, kind),
                 },
                 SourceKind::Image => match self.images.probe(path) {
                     Ok(_) => {
@@ -100,39 +67,9 @@ impl AddSources<'_> {
                             page: PageIndex(0),
                             rotation: Default::default(),
                         });
-                        SourceFile {
-                            id: source_id,
-                            path: path.clone(),
-                            kind,
-                            page_count: 1,
-                            page_sizes: Vec::new(),
-                            status: SourceStatus::Ready,
-                        }
+                        SourceFile::ready_image(source_id, path.clone())
                     }
-                    Err(error) => match error {
-                        error @ ImageError::UnsupportedFormat { .. } => unreadable_source(
-                            &error,
-                            source_id,
-                            path,
-                            kind,
-                            UnreadableReason::UnsupportedFormat,
-                        ),
-                        error @ ImageError::Missing { .. } => unreadable_source(
-                            &error,
-                            source_id,
-                            path,
-                            kind,
-                            UnreadableReason::Missing,
-                        ),
-                        error @ (ImageError::Unreadable { .. }
-                        | ImageError::EncodeFailed { .. }) => unreadable_source(
-                            &error,
-                            source_id,
-                            path,
-                            kind,
-                            UnreadableReason::Damaged,
-                        ),
-                    },
+                    Err(error) => failed_image(&error, source_id, path, kind),
                 },
             };
 
@@ -144,6 +81,39 @@ impl AddSources<'_> {
     }
 }
 
+fn failed_pdf(error: &PdfError, id: SourceId, path: &Path, kind: SourceKind) -> SourceFile {
+    match error {
+        PdfError::Encrypted { .. } => {
+            SourceFile::failed(id, path.to_path_buf(), kind, SourceStatus::Encrypted)
+        }
+        PdfError::EngineUnavailable(_) => {
+            unreadable_source(error, id, path, kind, UnreadableReason::EngineUnavailable)
+        }
+        PdfError::Missing { .. } => {
+            unreadable_source(error, id, path, kind, UnreadableReason::Missing)
+        }
+        PdfError::Unreadable { .. }
+        | PdfError::PageOutOfRange { .. }
+        | PdfError::WriteFailed { .. } => {
+            unreadable_source(error, id, path, kind, UnreadableReason::Damaged)
+        }
+    }
+}
+
+fn failed_image(error: &ImageError, id: SourceId, path: &Path, kind: SourceKind) -> SourceFile {
+    match error {
+        ImageError::UnsupportedFormat { .. } => {
+            unreadable_source(error, id, path, kind, UnreadableReason::UnsupportedFormat)
+        }
+        ImageError::Missing { .. } => {
+            unreadable_source(error, id, path, kind, UnreadableReason::Missing)
+        }
+        ImageError::Unreadable { .. } | ImageError::EncodeFailed { .. } => {
+            unreadable_source(error, id, path, kind, UnreadableReason::Damaged)
+        }
+    }
+}
+
 fn unreadable_source(
     error: &impl std::fmt::Display,
     id: SourceId,
@@ -152,14 +122,12 @@ fn unreadable_source(
     reason: UnreadableReason,
 ) -> SourceFile {
     tracing::warn!(%error, path = %path.display(), "source could not be read");
-    SourceFile {
+    SourceFile::failed(
         id,
-        path: path.to_path_buf(),
+        path.to_path_buf(),
         kind,
-        page_count: 0,
-        page_sizes: Vec::new(),
-        status: SourceStatus::Unreadable(reason),
-    }
+        SourceStatus::Unreadable(reason),
+    )
 }
 
 #[cfg(test)]
@@ -194,16 +162,16 @@ mod tests {
         }
         .execute(&MergeDocument::default(), &mut ids, &["/a.pdf".into()]);
         assert_eq!(result.plan().len(), 3);
-        assert_eq!(result.sources()[0].page_count, 3);
-        assert_eq!(result.sources()[0].path, PathBuf::from("/a.pdf"));
-        assert_eq!(result.sources()[0].status, SourceStatus::Ready);
+        assert_eq!(result.sources()[0].page_count(), 3);
+        assert_eq!(result.sources()[0].path(), PathBuf::from("/a.pdf"));
+        assert_eq!(result.sources()[0].status(), SourceStatus::Ready);
         assert_eq!(
-            result.sources()[0].page_sizes,
+            result.sources()[0].page_sizes(),
             vec![PageSize::A4_PORTRAIT; 3]
         );
 
         // Every slot must point back at the source it came from, in page order.
-        let source_id = result.sources()[0].id;
+        let source_id = result.sources()[0].id();
         assert!(result
             .plan()
             .slots()
@@ -217,6 +185,33 @@ mod tests {
                 .map(|slot| slot.page)
                 .collect::<Vec<_>>(),
             vec![PageIndex(0), PageIndex(1), PageIndex(2)]
+        );
+    }
+
+    #[test]
+    fn a_probe_that_reports_more_pages_than_sizes_is_rejected() {
+        let pdf = FakePdfEngine::new().with_document(
+            "/bad.pdf",
+            DocumentInfo {
+                page_count: 3,
+                page_sizes: vec![PageSize::A4_PORTRAIT; 2],
+                encrypted: false,
+            },
+        );
+        let result = AddSources {
+            pdf: &pdf,
+            images: &FakeImageDecoder::new(),
+        }
+        .execute(
+            &MergeDocument::default(),
+            &mut IdSequence::default(),
+            &["/bad.pdf".into()],
+        );
+
+        assert!(result.plan().is_empty());
+        assert_eq!(
+            result.sources()[0].status(),
+            SourceStatus::Unreadable(UnreadableReason::Damaged)
         );
     }
 
@@ -239,13 +234,13 @@ mod tests {
             &["/p.png".into()],
         );
         assert_eq!(result.plan().len(), 1);
-        assert_eq!(result.sources()[0].kind, SourceKind::Image);
-        assert_eq!(result.sources()[0].page_count, 1);
-        assert_eq!(result.sources()[0].status, SourceStatus::Ready);
+        assert_eq!(result.sources()[0].kind(), SourceKind::Image);
+        assert_eq!(result.sources()[0].page_count(), 1);
+        assert_eq!(result.sources()[0].status(), SourceStatus::Ready);
         // An image is laid out at the plan's dominant page size, so it carries
         // no page size of its own.
-        assert!(result.sources()[0].page_sizes.is_empty());
-        assert_eq!(result.plan().slots()[0].source, result.sources()[0].id);
+        assert!(result.sources()[0].page_sizes().is_empty());
+        assert_eq!(result.plan().slots()[0].source, result.sources()[0].id());
         assert_eq!(result.plan().slots()[0].page, PageIndex(0));
     }
 
@@ -267,7 +262,7 @@ mod tests {
             &["/locked.pdf".into()],
         );
         assert_eq!(result.plan().len(), 0);
-        assert_eq!(result.sources()[0].status, SourceStatus::Encrypted);
+        assert_eq!(result.sources()[0].status(), SourceStatus::Encrypted);
     }
 
     #[test]
@@ -294,14 +289,14 @@ mod tests {
         assert_eq!(result.sources().len(), 2); // but both are recorded
 
         // Sources keep the input order, and only the good one owns slots.
-        assert_eq!(result.sources()[0].path, PathBuf::from("/bad.pdf"));
+        assert_eq!(result.sources()[0].path(), PathBuf::from("/bad.pdf"));
         assert!(matches!(
-            result.sources()[0].status,
+            result.sources()[0].status(),
             SourceStatus::Unreadable(UnreadableReason::Damaged)
         ));
-        assert_eq!(result.sources()[1].path, PathBuf::from("/good.pdf"));
-        assert_eq!(result.sources()[1].status, SourceStatus::Ready);
-        let good_id = result.sources()[1].id;
+        assert_eq!(result.sources()[1].path(), PathBuf::from("/good.pdf"));
+        assert_eq!(result.sources()[1].status(), SourceStatus::Ready);
+        let good_id = result.sources()[1].id();
         assert!(result
             .plan()
             .slots()
@@ -334,14 +329,11 @@ mod tests {
         let plan = MergePlan::new(vec![existing.clone()]);
         let document = MergeDocument::new(
             plan,
-            vec![SourceFile {
-                id: SourceId(42),
-                path: "/existing.pdf".into(),
-                kind: SourceKind::Pdf,
-                page_count: 8,
-                page_sizes: vec![PageSize::A4_PORTRAIT; 8],
-                status: SourceStatus::Ready,
-            }],
+            vec![SourceFile::ready_pdf(
+                SourceId(42),
+                "/existing.pdf".into(),
+                vec![PageSize::A4_PORTRAIT; 8],
+            )],
         );
         let pdf = FakePdfEngine::new().with_document("/new.pdf", doc(2));
         let result = AddSources {
@@ -379,9 +371,9 @@ mod tests {
         assert!(result
             .sources()
             .iter()
-            .all(|source| source.kind == SourceKind::Pdf));
+            .all(|source| source.kind() == SourceKind::Pdf));
         // Each recorded source draws its own id from the sequence.
-        assert_ne!(result.sources()[0].id, result.sources()[1].id);
+        assert_ne!(result.sources()[0].id(), result.sources()[1].id());
     }
 
     #[test]
@@ -406,7 +398,7 @@ mod tests {
         assert_eq!(result.sources().len(), 1);
         assert_eq!(result.plan().len(), 0);
         assert!(matches!(
-            result.sources()[0].status,
+            result.sources()[0].status(),
             SourceStatus::Unreadable(UnreadableReason::Damaged)
         ));
     }
@@ -423,7 +415,7 @@ mod tests {
             &["/bad.pdf".into()],
         )
         .sources()[0]
-            .status
+            .status()
     }
 
     #[test]
@@ -470,7 +462,7 @@ mod tests {
             &["/bad.png".into()],
         )
         .sources()[0]
-            .status
+            .status()
     }
 
     #[test]

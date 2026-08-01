@@ -106,7 +106,7 @@ export function usePageCards(): {
     }
 
     try {
-      const snapshot = await reorder(target.from[0], target.from[1], target.to);
+      const snapshot = await reorder(target.fromStart, target.fromEnd, target.to);
       usePlanStore.getState().setSnapshot(snapshot);
     } catch (error) {
       console.error("reorder failed", error);

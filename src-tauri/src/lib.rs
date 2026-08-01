@@ -7,7 +7,7 @@ use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use presentation::commands::{
     add_sources, compose, expand_paths, rasterize_slot, redo, remove_slots, remove_source, reorder,
-    rotate_slots, undo,
+    rotate_slots, supported_extensions, undo,
 };
 use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
@@ -92,6 +92,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             add_sources,
             expand_paths,
+            supported_extensions,
             reorder,
             remove_slots,
             remove_source,

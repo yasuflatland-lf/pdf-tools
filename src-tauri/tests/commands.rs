@@ -11,8 +11,9 @@ use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
-    add_sources_inner, compose_inner, rasterize_slot_inner, redo_inner, remove_slots_inner,
-    remove_source_inner, reorder_inner, rotate_slots_inner, undo_inner,
+    add_sources_inner, compose_inner, expand_paths_inner, rasterize_slot_inner, redo_inner,
+    remove_slots_inner, remove_source_inner, reorder_inner, rotate_slots_inner,
+    supported_extensions_inner, undo_inner,
 };
 use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
@@ -53,6 +54,32 @@ impl PdfEngine for WritingPdfEngine {
             page_count: report.page_count,
             bytes_written: bytes.len() as u64,
         })
+    }
+}
+
+struct RasterizeFailurePdfEngine {
+    inner: FakePdfEngine,
+}
+
+impl PdfEngine for RasterizeFailurePdfEngine {
+    fn probe(&self, src: &Path) -> Result<DocumentInfo, PdfError> {
+        self.inner.probe(src)
+    }
+
+    fn rasterize(
+        &self,
+        _src: &Path,
+        page: PageIndex,
+        _spec: RasterSpec,
+    ) -> Result<RasterImage, PdfError> {
+        Err(PdfError::PageOutOfRange {
+            page: page.0,
+            count: 1,
+        })
+    }
+
+    fn compose(&self, plan: &ComposePlan, dest: &Path) -> Result<MergeReport, PdfError> {
+        self.inner.compose(plan, dest)
     }
 }
 
@@ -195,8 +222,8 @@ fn state_with_missing_source() -> AppState {
         .sources()
         .first()
         .expect("the state should contain a source")
-        .path
-        .clone();
+        .path()
+        .to_path_buf();
     std::fs::remove_file(source).expect("source fixture should be removed");
     state
 }
@@ -252,6 +279,19 @@ fn rotate_slots_returns_a_snapshot_carrying_the_new_rotation() {
 
     assert_eq!(snapshot.slots[0].rotation, 1);
     assert_eq!(snapshot.slots[1].rotation, 0);
+}
+
+#[test]
+fn rotate_slots_accepts_a_negative_delta() {
+    let state = state_with_pdf(1);
+    let slot_id = snapshot_of(&state).slots[0].id;
+
+    let negative = rotate_slots_inner(&state, vec![slot_id], -1).unwrap();
+    assert_eq!(negative.slots[0].rotation, 3);
+
+    undo_inner(&state).unwrap();
+    let positive = rotate_slots_inner(&state, vec![slot_id], 3).unwrap();
+    assert_eq!(negative, positive);
 }
 
 #[test]
@@ -359,6 +399,26 @@ fn add_sources_returns_a_snapshot_containing_the_new_slots() {
 }
 
 #[test]
+fn supported_extensions_returns_every_mergeable_format() {
+    assert_eq!(
+        supported_extensions_inner(),
+        ["pdf", "jpg", "jpeg", "png", "gif"]
+    );
+}
+
+#[test]
+fn expand_paths_drops_an_unsupported_file() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new()),
+        Arc::new(FakeImageDecoder::new()),
+    );
+
+    let expanded = expand_paths_inner(&state, vec!["/a/notes.txt".into()]).unwrap();
+
+    assert!(expanded.is_empty());
+}
+
+#[test]
 fn a_panic_while_the_session_is_locked_does_not_lose_the_document() {
     let state = AppState::with_engines(
         Arc::new(FakePdfEngine::new().with_document("/a.pdf", document(2))),
@@ -441,14 +501,9 @@ fn rasterize_slot_returns_png_bytes_for_an_image_source() {
 #[test]
 fn rasterize_slot_surfaces_a_rasterize_failure() {
     let state = AppState::with_engines(
-        Arc::new(FakePdfEngine::new().with_document(
-            "/known.pdf",
-            DocumentInfo {
-                page_count: 1,
-                page_sizes: vec![],
-                encrypted: false,
-            },
-        )),
+        Arc::new(RasterizeFailurePdfEngine {
+            inner: FakePdfEngine::new().with_document("/known.pdf", pdf_info()),
+        }),
         Arc::new(FakeImageDecoder::new()),
     );
     let slot_id = add_sources(&state, &[PathBuf::from("/known.pdf")]);

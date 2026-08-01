@@ -29,11 +29,20 @@ impl PdfEngine for PdfiumEngine {
                     path: src.to_path_buf(),
                     reason: format!("failed to inspect page {}: {error}", index + 1),
                 })?;
-                page_sizes.push(PageSize {
-                    width_pt: page.width().value,
-                    height_pt: page.height().value,
-                });
+                let page_size =
+                    PageSize::new(page.width().value, page.height().value).ok_or_else(|| {
+                        PdfError::Unreadable {
+                            path: src.to_path_buf(),
+                            reason: format!(
+                                "page {} has a non-positive or non-finite size",
+                                index + 1
+                            ),
+                        }
+                    })?;
+                page_sizes.push(page_size);
             }
+
+            debug_assert_eq!(page_sizes.len() as u32, page_count);
 
             Ok(DocumentInfo {
                 page_count,

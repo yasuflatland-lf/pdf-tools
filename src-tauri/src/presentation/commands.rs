@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
 use pdf_tools_core::application::expand_sources::ExpandSources;
-use pdf_tools_core::domain::geometry::RasterSpec;
+use pdf_tools_core::application::rasterize_slot::{RasterizeSlot, SlotTarget};
 use pdf_tools_core::domain::ids::{SlotId, SourceId};
 use pdf_tools_core::domain::source::SourceKind;
 use pdf_tools_core::infrastructure::png::encode_png;
@@ -32,9 +32,10 @@ pub fn add_sources(state: State<'_, AppState>, paths: Vec<String>) -> Result<Pla
 /// The body of the `expand_paths` command, kept free of Tauri's `State`
 /// wrapper so it can be exercised in tests without starting a webview.
 ///
-/// Resolves folders to the files inside them and leaves everything else alone.
-/// It is deliberately separate from `add_sources`: the frontend has to be able
-/// to see the count, and ask about it, before anything enters the plan.
+/// Resolves folders to the supported files inside them and drops unsupported
+/// direct inputs. It is deliberately separate from `add_sources`: the frontend
+/// has to be able to see the count, and ask about it, before anything enters the
+/// plan.
 pub fn expand_paths_inner(state: &AppState, paths: Vec<String>) -> Result<Vec<String>, String> {
     let inputs = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
 
@@ -52,6 +53,20 @@ pub fn expand_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<Ve
     expand_paths_inner(&state, paths)
 }
 
+/// The extensions the picker offers, taken from the domain so the filter can
+/// never advertise something the app would then refuse to merge.
+pub fn supported_extensions_inner() -> Vec<String> {
+    SourceKind::supported_extensions()
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[tauri::command]
+pub fn supported_extensions() -> Vec<String> {
+    supported_extensions_inner()
+}
+
 pub fn reorder_inner(
     state: &AppState,
     from_start: usize,
@@ -59,7 +74,7 @@ pub fn reorder_inner(
     to: usize,
 ) -> Result<PlanSnapshot, String> {
     let mut session = state.session();
-    session.reorder(from_start..from_end, to);
+    session.reorder(from_start, from_end, to);
     Ok(PlanSnapshot::from_session(&session))
 }
 
@@ -105,7 +120,6 @@ pub fn rotate_slots_inner(
     delta: i32,
 ) -> Result<PlanSnapshot, String> {
     let slot_ids = slot_ids.into_iter().map(SlotId).collect::<Vec<_>>();
-    let delta = delta.rem_euclid(4) as i8;
     let mut session = state.session();
     session.rotate(&slot_ids, delta);
     Ok(PlanSnapshot::from_session(&session))
@@ -206,35 +220,21 @@ pub async fn compose(app: AppHandle, dest: String) -> Result<MergeReportDto, Str
 /// Renders one plan slot to PNG bytes. Split out of the command so tests can
 /// exercise it without a webview.
 pub fn rasterize_slot_inner(state: &AppState, slot_id: u64, width: u32) -> Result<Vec<u8>, String> {
-    let (path, kind, page) = {
+    // Only the named slot is resolved out of the session, so the lock is
+    // released before the engine runs -- as `compose` already does -- without
+    // copying a plan per thumbnail.
+    let target = {
         let session = state.session();
-        let slot = session
-            .plan()
-            .slots()
-            .iter()
-            .find(|slot| slot.id == SlotId(slot_id))
-            .ok_or_else(|| format!("slot {slot_id} was not found"))?;
-        let source = session.document().source_of(slot);
-        (source.path.clone(), source.kind, slot.page)
-    };
+        SlotTarget::resolve(session.document(), SlotId(slot_id))
+    }
+    .map_err(|error| error.to_string())?;
 
-    let image = match kind {
-        SourceKind::Pdf => state
-            .pdf()
-            .rasterize(
-                &path,
-                page,
-                RasterSpec {
-                    target_width_px: width,
-                },
-            )
-            .map_err(|error| error.to_string())?,
-        // Image sources are decoded at their native size because the port takes no target width.
-        SourceKind::Image => state
-            .images()
-            .decode_first_frame(&path)
-            .map_err(|error| error.to_string())?,
-    };
+    let image = RasterizeSlot {
+        pdf: state.pdf(),
+        images: state.images(),
+    }
+    .execute(&target, width)
+    .map_err(|error| error.to_string())?;
 
     encode_png(&image).map_err(|error| error.to_string())
 }
