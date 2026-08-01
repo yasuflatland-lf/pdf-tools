@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use crate::application::errors::{ImageError, PdfError, WalkError};
 use crate::application::ports::{
-    ComposePlan, DirectoryWalker, ImageDecoder, MergeReport, PdfEngine, WalkEntry,
+    ComposeEntry, ComposePlan, DirectoryWalker, ImageDecoder, MergeReport, PdfEngine, WalkEntry,
 };
 use crate::domain::geometry::{RasterImage, RasterSpec};
 use crate::domain::ids::PageIndex;
@@ -111,6 +111,18 @@ impl PdfEngine for FakePdfEngine {
             .last_composed
             .lock()
             .expect("fake PDF engine mutex should not be poisoned") = Some(plan.clone());
+
+        // A registered failure stands for a source the real engine rejects while
+        // assembling the document — a file that has disappeared, for instance.
+        // The plan is recorded first, so a test can still assert what was asked.
+        for entry in &plan.entries {
+            let path = match entry {
+                ComposeEntry::PdfPage { path, .. } | ComposeEntry::Image { path, .. } => path,
+            };
+            if let Some(Err(err)) = self.documents.get(path) {
+                return Err(err.clone());
+            }
+        }
 
         Ok(MergeReport {
             page_count: plan.entries.len() as u32,
@@ -284,6 +296,23 @@ mod tests {
             }],
         };
         engine.compose(&plan, Path::new("/out.pdf")).unwrap();
+        assert_eq!(engine.last_composed(), Some(plan));
+    }
+
+    #[test]
+    fn compose_returns_a_registered_failure_for_a_plan_entry() {
+        let path = PathBuf::from("/gone.pdf");
+        let failure = PdfError::Missing { path: path.clone() };
+        let engine = FakePdfEngine::new().with_failure(&path, failure.clone());
+        let plan = ComposePlan {
+            entries: vec![ComposeEntry::PdfPage {
+                path,
+                page: PageIndex(0),
+                rotation: Default::default(),
+            }],
+        };
+
+        assert_eq!(engine.compose(&plan, Path::new("/out.pdf")), Err(failure));
         assert_eq!(engine.last_composed(), Some(plan));
     }
 

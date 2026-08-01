@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
+use pdf_tools_core::application::compose::{Compose, ProgressSink};
+use pdf_tools_core::application::errors::ComposeError;
 use pdf_tools_core::application::expand_sources::ExpandSources;
 use pdf_tools_core::application::rasterize_slot::{RasterizeSlot, SlotTarget};
 use pdf_tools_core::domain::ids::{SlotId, SourceId};
