@@ -114,10 +114,7 @@ fn an_image_denser_than_the_cap_is_embedded_at_the_cap() {
     let plan = ComposePlan {
         entries: vec![ComposeEntry::Image {
             path: fixture("sample.png"),
-            fit_to: PageSize {
-                width_pt: 72.0,
-                height_pt: 72.0,
-            },
+            fit_to: PageSize::new(72.0, 72.0).unwrap(),
             rotation: Default::default(),
         }],
     };
@@ -146,10 +143,7 @@ fn a_passthrough_jpeg_is_never_downscaled() {
     let plan = ComposePlan {
         entries: vec![ComposeEntry::Image {
             path: fixture("sample.jpg"),
-            fit_to: PageSize {
-                width_pt: 72.0,
-                height_pt: 72.0,
-            },
+            fit_to: PageSize::new(72.0, 72.0).unwrap(),
             rotation: Default::default(),
         }],
     };
