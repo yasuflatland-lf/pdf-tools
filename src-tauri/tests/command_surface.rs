@@ -94,8 +94,8 @@ fn documented_commands() -> BTreeSet<String> {
 }
 
 fn commands_pending_frontend_integration() -> BTreeSet<String> {
-    // Folder expansion is intentionally registered one issue before the UI
-    // begins calling and documenting it.
+    // Folder expansion is intentionally documented one issue after the UI
+    // begins calling it. Only the documentation half is still pending.
     BTreeSet::from(["expand_paths".to_owned()])
 }
 
@@ -103,12 +103,7 @@ fn commands_pending_frontend_integration() -> BTreeSet<String> {
 fn every_registered_command_has_a_frontend_caller() {
     let registered = registered_commands();
     let invoked = invoked_commands();
-    let pending = commands_pending_frontend_integration();
-    let missing = registered
-        .difference(&invoked)
-        .filter(|command| !pending.contains(*command))
-        .cloned()
-        .collect::<Vec<_>>();
+    let missing = registered.difference(&invoked).cloned().collect::<Vec<_>>();
 
     assert!(
         missing.is_empty(),

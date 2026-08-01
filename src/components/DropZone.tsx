@@ -1,11 +1,11 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { PropsWithChildren } from "react";
 import { useEffect, useState } from "react";
-import { addSources } from "../lib/tauri-api";
-import { usePlanStore } from "../store/plan-store";
+import { useAddSources } from "./useAddSources";
 
 export function DropZone({ children }: PropsWithChildren) {
   const [isDragging, setIsDragging] = useState(false);
+  const { addPaths } = useAddSources();
 
   useEffect(() => {
     let disposed = false;
@@ -25,15 +25,11 @@ export function DropZone({ children }: PropsWithChildren) {
           return;
         }
 
-        try {
-          const snapshot = await addSources(payload.paths);
-          usePlanStore.getState().setSnapshot(snapshot);
-        } catch (error) {
-          // A webview listener has nowhere to return a failure to, and an
-          // unhandled rejection would be invisible. Surfacing this in the UI
-          // is Task 29.
-          console.error("add_sources failed", error);
-        }
+        // A drop goes through the same procedure as the buttons, so a folder
+        // cannot behave one way when dropped and another when picked. It also
+        // reports its own failures, which this listener could not do: it has
+        // nowhere to return one to.
+        await addPaths(payload.paths);
       })
       .then((stopListening) => {
         if (disposed) {
@@ -50,7 +46,8 @@ export function DropZone({ children }: PropsWithChildren) {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+    // `addPaths` is stable across renders, so the listener registers once.
+  }, [addPaths]);
 
   return (
     <div

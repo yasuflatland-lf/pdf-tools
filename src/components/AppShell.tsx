@@ -8,6 +8,7 @@ import { DropZone } from "./DropZone";
 import { SourceErrorCard } from "./PageCard";
 import { PageGrid } from "./PageGrid";
 import { PageList } from "./PageList";
+import { SourceNotice } from "./SourceNotice";
 import { Toolbar } from "./Toolbar";
 
 /**
@@ -67,6 +68,8 @@ export function AppShell() {
 
       <DropZone>
         <main className="flex h-full flex-col gap-4 overflow-hidden px-6 py-6">
+          <SourceNotice />
+
           {unusableSources.length > 0 && <UnusableSources sources={unusableSources} />}
 
           <div className="min-h-0 flex-1">
