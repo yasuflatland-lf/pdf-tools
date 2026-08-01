@@ -171,6 +171,22 @@ mod tests {
     }
 
     #[test]
+    fn ordering_spans_the_whole_tree_rather_than_one_directory_at_a_time() {
+        // The final order interleaves the levels: `/s/c.pdf` is found while
+        // listing `/s`, before either subfolder is opened, yet it sorts last.
+        // Sorting each directory as it is popped could not produce this.
+        let walker = FakeDirectoryWalker::new()
+            .with_dir("/s", vec![subdir("/s/b"), subdir("/s/a"), file("/s/c.pdf")])
+            .with_dir("/s/a", vec![file("/s/a/2.pdf")])
+            .with_dir("/s/b", vec![file("/s/b/1.pdf")]);
+
+        assert_eq!(
+            expand(&walker, &["/s"]),
+            ["/s/a/2.pdf", "/s/b/1.pdf", "/s/c.pdf"]
+        );
+    }
+
+    #[test]
     fn a_symlinked_directory_is_never_descended_into() {
         // The link is listed as a file entry, so the walk leaves it alone even
         // though the target is a registered directory. Following it is how a
@@ -184,11 +200,15 @@ mod tests {
 
     #[test]
     fn an_unreadable_subfolder_is_skipped_and_the_walk_continues() {
+        // `/scans/locked` is registered last so the stack pops it first: the
+        // only file in the tree is still waiting behind the failure, and a walk
+        // that gave up there would return nothing at all.
         let walker = FakeDirectoryWalker::new()
             .with_dir(
                 "/scans",
-                vec![subdir("/scans/locked"), file("/scans/reachable.pdf")],
+                vec![subdir("/scans/other"), subdir("/scans/locked")],
             )
+            .with_dir("/scans/other", vec![file("/scans/other/reachable.pdf")])
             .with_failure(
                 "/scans/locked",
                 WalkError::Unreadable {
@@ -197,7 +217,7 @@ mod tests {
                 },
             );
 
-        assert_eq!(expand(&walker, &["/scans"]), ["/scans/reachable.pdf"]);
+        assert_eq!(expand(&walker, &["/scans"]), ["/scans/other/reachable.pdf"]);
     }
 
     #[test]
