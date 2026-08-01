@@ -59,7 +59,7 @@ pub fn reorder_inner(
     to: usize,
 ) -> Result<PlanSnapshot, String> {
     let mut session = state.session();
-    session.reorder(from_start..from_end, to);
+    session.reorder(from_start, from_end, to);
     Ok(PlanSnapshot::from_session(&session))
 }
 

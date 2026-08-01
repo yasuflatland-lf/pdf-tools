@@ -7,7 +7,8 @@ export interface DropGroup {
 }
 
 export interface DropTarget {
-  from: [number, number];
+  fromStart: number;
+  fromEnd: number;
   to: number;
 }
 
@@ -42,7 +43,8 @@ export function computeDropTarget(
     overGroupIndex < activeGroupIndex ? over.start : over.start + over.pageCount - active.pageCount;
 
   return {
-    from: [active.start, active.start + active.pageCount],
+    fromStart: active.start,
+    fromEnd: active.start + active.pageCount,
     to,
   };
 }
