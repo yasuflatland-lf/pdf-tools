@@ -166,6 +166,13 @@ function keyDown(init: KeyboardEventInit): void {
   });
 }
 
+/** A key press that starts where the focus actually is, so it can be swallowed. */
+function keyDownOn(target: HTMLElement, key: string): void {
+  act(() => {
+    target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }));
+  });
+}
+
 describe("Toolbar", () => {
   beforeEach(() => {
     mocks.addSources.mockReset();
@@ -242,9 +249,13 @@ describe("Toolbar", () => {
     expect(logo?.getAttribute("alt")).toBe("PDF Tools");
   });
 
-  it("opens the add menu and closes it on Escape", async () => {
-    const container = await renderToolbar();
+  it("opens the add menu and closes it on Escape, keeping the page selection", async () => {
+    loadOneSlot();
+    const container = await renderShell();
     const trigger = getButton(container, "Add files or a folder");
+    act(() => {
+      useUiStore.getState().selectSlots([1]);
+    });
 
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector('[role="menu"]')).toBeNull();
@@ -256,15 +267,83 @@ describe("Toolbar", () => {
     expect(getButton(container, "Files…")).toBeDefined();
     expect(getButton(container, "Folder…")).toBeDefined();
 
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
-    });
+    keyDownOn(trigger, "Escape");
 
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+    // One key press, one effect: the Escape that closes the menu must not also
+    // reach the shell's clear-selection shortcut behind it.
+    expect(useUiStore.getState().selectedSlots.size).toBe(1);
   });
 
-  it("closes the menu after an item runs", async () => {
+  it("moves between the menu items on the arrows without reaching the grid", async () => {
+    loadOneSlot();
+    const container = await renderShell();
+    const trigger = getButton(container, "Add files or a folder");
+
+    await click(trigger);
+    keyDownOn(trigger, "ArrowDown");
+    expect(document.activeElement).toBe(getButton(container, "Files…"));
+
+    keyDownOn(getButton(container, "Files…"), "ArrowDown");
+    expect(document.activeElement).toBe(getButton(container, "Folder…"));
+
+    // The last item wraps back to the first rather than falling out of the menu.
+    keyDownOn(getButton(container, "Folder…"), "ArrowDown");
+    expect(document.activeElement).toBe(getButton(container, "Files…"));
+
+    keyDownOn(getButton(container, "Files…"), "ArrowUp");
+    expect(document.activeElement).toBe(getButton(container, "Folder…"));
+
+    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+    // The grid moves the focus and drags the selection along with it, so an
+    // untouched selection is how "the arrows reached nothing" is observed.
+    expect(useUiStore.getState().selectedSlots.size).toBe(0);
+  });
+
+  it("closes the menu on a mousedown outside it, leaving the focus alone", async () => {
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Add files or a folder"));
+    const focused = document.activeElement;
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    // The pointer is already taking the focus somewhere, so the menu must not
+    // pull it back to the trigger the way Escape does.
+    expect(document.activeElement).toBe(focused);
+  });
+
+  it("keeps the menu open on a mousedown inside it", async () => {
+    const container = await renderToolbar();
+    const trigger = getButton(container, "Add files or a folder");
+
+    await click(trigger);
+    // The trigger's own mousedown must not close the menu, or its click would
+    // immediately toggle it back open and it could never be dismissed.
+    await act(async () => {
+      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+
+    expect(container.querySelector('[role="menu"]')).not.toBeNull();
+  });
+
+  it("closes the menu after the Files… item runs", async () => {
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Add files or a folder"));
+    await click(getButton(container, "Files…"));
+
+    expect(container.querySelector('[role="menu"]')).toBeNull();
+    expect(mocks.open).toHaveBeenCalledWith({
+      multiple: true,
+      filters: [{ name: "PDFs and images", extensions: ["pdf", "jpg", "jpeg", "png", "gif"] }],
+    });
+  });
+
+  it("closes the menu after the Folder… item runs", async () => {
     const container = await renderToolbar();
 
     await click(getButton(container, "Add files or a folder"));

@@ -6,17 +6,13 @@ const ITEM_CLASS =
   "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-left text-slate-200 hover:bg-slate-700 focus-visible:bg-slate-700 focus-visible:outline-none disabled:cursor-not-allowed disabled:text-slate-600";
 
 /** Moves focus between items so the menu is usable without a pointer. */
-function onMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+function moveFocus(container: HTMLElement, step: number) {
+  const items = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+  if (items.length === 0) {
     return;
   }
 
-  event.preventDefault();
-  const items = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
-  );
   const current = items.indexOf(document.activeElement as HTMLButtonElement);
-  const step = event.key === "ArrowDown" ? 1 : -1;
   const next = (current + step + items.length) % items.length;
   items[next]?.focus();
 }
@@ -53,13 +49,26 @@ export function AddSourcesMenu() {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
+      if (event.key === "Escape") {
+        // Stopped here so Escape closing the menu does not also clear the page
+        // selection behind it: one key press, one effect.
+        event.stopPropagation();
+        close(true);
         return;
       }
-      // Stopped here so Escape closing the menu does not also clear the page
-      // selection behind it: one key press, one effect.
+
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+        return;
+      }
+      // The arrows are caught on the document rather than on the panel because
+      // opening the menu leaves the focus on the trigger, which is outside the
+      // panel: a handler there would never see the first press, and the key
+      // would move the grid behind the open menu instead.
+      event.preventDefault();
       event.stopPropagation();
-      close(true);
+      if (containerRef.current) {
+        moveFocus(containerRef.current, event.key === "ArrowDown" ? 1 : -1);
+      }
     };
 
     document.addEventListener("mousedown", onPointerDown);
@@ -94,7 +103,6 @@ export function AddSourcesMenu() {
       {isOpen && (
         <div
           className="absolute left-0 top-9 z-10 w-44 rounded-lg border border-slate-700 bg-slate-800 p-1 text-xs shadow-lg"
-          onKeyDown={onMenuKeyDown}
           role="menu"
         >
           <button
