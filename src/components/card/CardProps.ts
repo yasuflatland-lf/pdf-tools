@@ -18,8 +18,10 @@ export interface CardViewProps {
   /** Absent when the run is a single page, which has nothing to fold. */
   onToggle?: () => void;
   /**
-   * Absent in list view, which has no room for the hover controls. The toolbar
-   * and the keyboard reach the same operation for a selected card either way.
+   * Absent when the card offers no rotation of its own: a grid card draws the
+   * hover controls only when it is given one, and the list row has no room for
+   * them at all. The toolbar and the keyboard reach the same operation for a
+   * selected card either way.
    */
   onRotate?: (delta: number) => void;
 }
