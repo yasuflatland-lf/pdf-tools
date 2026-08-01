@@ -82,6 +82,32 @@ impl PlanSession {
         self.finish_change();
     }
 
+    /// Removes a source and every slot it owns. This is the only way to take a
+    /// file out of the document by name rather than by page, and the only way
+    /// at all to dismiss one that contributes no pages: a failed source has no
+    /// slot to select, so `remove` cannot reach it.
+    pub fn remove_source(&mut self, source: SourceId) {
+        self.begin_change();
+        let ids: Vec<SlotId> = self
+            .document
+            .plan()
+            .slots()
+            .iter()
+            .filter(|slot| slot.source == source)
+            .map(|slot| slot.id)
+            .collect();
+        let plan = operations::remove(self.document.plan(), &ids);
+        let sources = self
+            .document
+            .sources()
+            .iter()
+            .filter(|candidate| candidate.id != source)
+            .cloned()
+            .collect();
+        self.document = MergeDocument::new(plan, sources);
+        self.finish_change();
+    }
+
     pub fn rotate(&mut self, ids: &[SlotId], delta: i8) {
         self.begin_change();
         let plan = operations::rotate(self.document.plan(), ids, delta);
@@ -311,6 +337,87 @@ mod tests {
         let ids: Vec<SlotId> = s.plan().slots().iter().map(|x| x.id).collect();
         s.remove(&ids);
         assert!(s.sources().is_empty());
+    }
+
+    #[test]
+    fn removing_an_encrypted_source_discards_it() {
+        let pdf = FakePdfEngine::new().with_failure(
+            "/locked.pdf",
+            PdfError::Encrypted {
+                path: "/locked.pdf".into(),
+            },
+        );
+        let mut s = PlanSession::new();
+        s.add_sources(&pdf, &FakeImageDecoder::new(), &["/locked.pdf".into()]);
+        let source_id = s.sources()[0].id;
+
+        s.remove_source(source_id);
+
+        assert!(s.sources().is_empty());
+    }
+
+    #[test]
+    fn removing_a_ready_source_discards_it_and_all_its_slots() {
+        let mut s = session_with_pdf(2);
+        let source_id = s.sources()[0].id;
+
+        s.remove_source(source_id);
+
+        assert!(s.sources().is_empty());
+        assert!(s.plan().is_empty());
+    }
+
+    #[test]
+    fn removing_an_unknown_source_does_not_create_history() {
+        let mut s = session_with_pdf(2);
+        s.undo.clear();
+
+        s.remove_source(SourceId(9999));
+
+        assert_eq!(s.sources().len(), 1);
+        assert_eq!(s.plan().len(), 2);
+        assert!(!s.can_undo());
+    }
+
+    #[test]
+    fn removing_a_source_can_be_undone() {
+        let mut s = session_with_pdf(2);
+        let source = s.sources()[0].clone();
+        let slots = s.plan().slots().to_vec();
+
+        s.remove_source(source.id);
+        assert!(s.undo());
+
+        assert_eq!(s.sources(), &[source]);
+        assert_eq!(s.plan().slots(), slots);
+    }
+
+    #[test]
+    fn removing_one_source_preserves_the_order_of_the_other_sources_slots() {
+        let pdf = FakePdfEngine::new()
+            .with_document("/first.pdf", document(2))
+            .with_document("/second.pdf", document(2));
+        let mut s = PlanSession::new();
+        s.add_sources(
+            &pdf,
+            &FakeImageDecoder::new(),
+            &["/first.pdf".into(), "/second.pdf".into()],
+        );
+        let removed_source = s.sources()[0].id;
+        let surviving_source = s.sources()[1].id;
+        let surviving_slots = s
+            .plan()
+            .slots()
+            .iter()
+            .filter(|slot| slot.source == surviving_source)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        s.remove_source(removed_source);
+
+        assert_eq!(s.sources().len(), 1);
+        assert_eq!(s.sources()[0].id, surviving_source);
+        assert_eq!(s.plan().slots(), surviving_slots);
     }
 
     #[test]

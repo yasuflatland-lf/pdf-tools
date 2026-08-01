@@ -6,8 +6,8 @@ use pdf_tools_core::infrastructure::fs_walker::StdFsWalker;
 use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use presentation::commands::{
-    add_sources, compose, expand_paths, rasterize_slot, redo, remove_slots, reorder, rotate_slots,
-    undo,
+    add_sources, compose, expand_paths, rasterize_slot, redo, remove_slots, remove_source, reorder,
+    rotate_slots, undo,
 };
 use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
@@ -94,6 +94,7 @@ pub fn run() {
             expand_paths,
             reorder,
             remove_slots,
+            remove_source,
             rotate_slots,
             undo,
             redo,

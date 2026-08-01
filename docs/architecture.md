@@ -193,6 +193,7 @@ Every plan command returns a fresh `PlanSnapshot`.
 | `expand_paths(paths)`            | Resolve folders to the supported files inside them (does **not** return a plan) |
 | `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
 | `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
+| `remove_source(source_id)`       | Delete a source and every slot it owns, then re-evaluate regrouping             |
 | `rotate_slots(slot_ids, delta)`  | Turn surviving slots clockwise modulo four, then re-evaluate regrouping         |
 | `undo()` / `redo()`              | Move along the plan stack                                                       |
 | `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
@@ -245,6 +246,10 @@ The trust boundary is **the files the user drops in**, and one bad file must nev
   shown on the card.
 - **File moved or deleted after being added** — detected at `compose`; the merge stops and names
   the offending file in the error dialog.
+
+An excluded file is not stuck in that state: its card carries a **Remove** control that calls
+`remove_source`, so a file that contributes no pages — and therefore has no slot to select — can
+still be taken out of the document, and put back with Undo.
 
 `PdfError` and `ImageError` are `thiserror` enums whose messages name the path and the reason.
 At probe time, application maps them to typed unreadable reasons for the card and logs the engine

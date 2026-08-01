@@ -12,7 +12,7 @@ use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
     add_sources_inner, compose_inner, rasterize_slot_inner, redo_inner, remove_slots_inner,
-    reorder_inner, rotate_slots_inner, undo_inner,
+    remove_source_inner, reorder_inner, rotate_slots_inner, undo_inner,
 };
 use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
@@ -276,6 +276,32 @@ fn undo_flags_reflect_the_history() {
     assert!(!snapshot.can_redo);
     let snapshot = undo_inner(&state).unwrap();
     assert!(snapshot.can_redo);
+}
+
+#[test]
+fn remove_source_returns_a_snapshot_without_that_source() {
+    let state = state_with_pdf(2);
+    let source_id = snapshot_of(&state).sources[0].id;
+
+    let snapshot = remove_source_inner(&state, source_id).unwrap();
+
+    assert!(snapshot.sources.is_empty());
+    assert!(snapshot.slots.is_empty());
+    assert!(snapshot.can_undo);
+}
+
+#[test]
+fn removing_an_unknown_source_returns_the_unchanged_snapshot_without_history() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new()),
+        Arc::new(FakeImageDecoder::new()),
+    );
+    let before = snapshot_of(&state);
+
+    let snapshot = remove_source_inner(&state, u64::MAX).unwrap();
+
+    assert_eq!(snapshot, before);
+    assert!(!snapshot.can_undo);
 }
 
 #[test]

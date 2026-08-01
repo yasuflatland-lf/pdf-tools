@@ -56,7 +56,11 @@ describe("ErrorBadge", () => {
 
   it("renders a dimmed source error card with the file name and badge", async () => {
     const container = await render(
-      <SourceErrorCard fileName="damaged.pdf" status={{ kind: "unreadable", reason: "damaged" }} />,
+      <SourceErrorCard
+        fileName="damaged.pdf"
+        onDismiss={() => {}}
+        status={{ kind: "unreadable", reason: "damaged" }}
+      />,
     );
     const card = container.querySelector("article");
 
