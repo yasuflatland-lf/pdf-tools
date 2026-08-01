@@ -137,13 +137,13 @@ impl PlanSession {
                     .plan()
                     .slots()
                     .iter()
-                    .any(|slot| slot.source == source.id);
+                    .any(|slot| slot.source == source.id());
                 let owns_now = self
                     .document
                     .plan()
                     .slots()
                     .iter()
-                    .any(|slot| slot.source == source.id);
+                    .any(|slot| slot.source == source.id());
 
                 // A source that never owned a slot represents an encrypted or
                 // unreadable file that the UI must continue to show.
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn undo_restores_grouping_state_as_well_as_the_plan() {
         let mut s = session_with_pdf(3);
-        let source_id = s.sources()[0].id;
+        let source_id = s.sources()[0].id();
         let images = FakeImageDecoder::new().with_image(
             "/image.png",
             ImageInfo {
@@ -426,7 +426,7 @@ mod tests {
         assert!(s
             .sources()
             .iter()
-            .any(|source| source.status == SourceStatus::Encrypted));
+            .any(|source| source.status() == SourceStatus::Encrypted));
     }
 
     #[test]
@@ -443,7 +443,7 @@ mod tests {
 
         assert!(s.can_undo());
         assert_eq!(s.sources().len(), 1);
-        assert_eq!(s.sources()[0].status, SourceStatus::Encrypted);
+        assert_eq!(s.sources()[0].status(), SourceStatus::Encrypted);
         assert!(s.undo());
         assert!(s.sources().is_empty());
     }

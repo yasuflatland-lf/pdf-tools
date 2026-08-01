@@ -23,7 +23,7 @@ impl MergeDocument {
         let slots = plan
             .slots()
             .iter()
-            .filter(|slot| sources.iter().any(|source| source.id == slot.source))
+            .filter(|slot| sources.iter().any(|source| source.id() == slot.source))
             .cloned()
             .collect();
 
@@ -52,7 +52,7 @@ impl MergeDocument {
     pub fn source_of(&self, slot: &PageSlot) -> &SourceFile {
         self.sources
             .iter()
-            .find(|source| source.id == slot.source)
+            .find(|source| source.id() == slot.source)
             .expect("MergeDocument construction guarantees every slot has a source")
     }
 
@@ -73,11 +73,11 @@ impl MergeDocument {
             .enumerate()
             .filter_map(|(plan_index, slot)| {
                 let source = self.source_of(slot);
-                if source.kind != SourceKind::Pdf {
+                if source.kind() != SourceKind::Pdf {
                     return None;
                 }
                 source
-                    .page_sizes
+                    .page_sizes()
                     .get(slot.page.0 as usize)
                     .copied()
                     .map(|page_size| (plan_index, page_size))
@@ -115,7 +115,6 @@ mod tests {
     use super::*;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
     use crate::domain::operations;
-    use crate::domain::source::SourceStatus;
 
     const A4: PageSize = PageSize::A4_PORTRAIT;
 
@@ -139,27 +138,13 @@ mod tests {
     }
 
     fn pdf_source(id: u64, page_sizes: Vec<PageSize>) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path: PathBuf::new(),
-            kind: SourceKind::Pdf,
-            page_count: page_sizes.len() as u32,
-            page_sizes,
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_pdf(SourceId(id), PathBuf::new(), page_sizes)
     }
 
-    /// The single page size is deliberately not A4 so that a test expecting the
-    /// A4 fallback fails if image sources were ever counted.
+    /// An image carries no page size at all, so `dominant_page_size` has
+    /// nothing to count even before it filters image sources out by kind.
     fn image_source(id: u64) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path: PathBuf::new(),
-            kind: SourceKind::Image,
-            page_count: 1,
-            page_sizes: vec![letter()],
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_image(SourceId(id), PathBuf::new())
     }
 
     fn document_with(pages: &[(u64, u32)], sources: Vec<SourceFile>) -> MergeDocument {
@@ -206,7 +191,7 @@ mod tests {
         let document = document_with(&[(10, 0)], vec![pdf_source(10, vec![A4])]);
 
         assert_eq!(
-            document.source_of(&document.plan().slots()[0]).id,
+            document.source_of(&document.plan().slots()[0]).id(),
             SourceId(10)
         );
     }

@@ -43,8 +43,8 @@ impl SlotTarget {
         let source = document.source_of(slot);
 
         Ok(Self {
-            path: source.path.clone(),
-            kind: source.kind,
+            path: source.path().to_path_buf(),
+            kind: source.kind(),
             page: slot.page,
         })
     }
@@ -86,7 +86,7 @@ mod tests {
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::SourceId;
     use crate::domain::plan::{MergePlan, PageSlot};
-    use crate::domain::source::{DocumentInfo, ImageInfo, SourceFile, SourceStatus};
+    use crate::domain::source::{DocumentInfo, ImageInfo, SourceFile};
     use crate::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 
     /// Three sources and four slots, so a test can name a slot that is neither
@@ -117,25 +117,15 @@ mod tests {
     }
 
     fn pdf_source(id: u64, path: &str, page_count: u32) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path: PathBuf::from(path),
-            kind: SourceKind::Pdf,
-            page_count,
-            page_sizes: vec![PageSize::A4_PORTRAIT; page_count as usize],
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_pdf(
+            SourceId(id),
+            PathBuf::from(path),
+            vec![PageSize::A4_PORTRAIT; page_count as usize],
+        )
     }
 
     fn image_source(id: u64, path: &str) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path: PathBuf::from(path),
-            kind: SourceKind::Image,
-            page_count: 1,
-            page_sizes: Vec::new(),
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_image(SourceId(id), PathBuf::from(path))
     }
 
     fn pdf_info(page_count: u32) -> DocumentInfo {

@@ -108,7 +108,7 @@ fn absent_or_unparseable_exif_yields_no_orientation_and_remains_ready() {
     assert!(document
         .sources()
         .iter()
-        .all(|source| source.status == SourceStatus::Ready));
+        .all(|source| source.status() == SourceStatus::Ready));
     let absent = ImageCrateDecoder.decode_first_frame(&paths[0]).unwrap();
     let unparseable = ImageCrateDecoder.decode_first_frame(&paths[1]).unwrap();
     assert_eq!(

@@ -48,17 +48,17 @@ impl Compose<'_> {
             .plan()
             .slots()
             .iter()
-            .filter(|slot| document.source_of(slot).status == SourceStatus::Ready)
+            .filter(|slot| document.source_of(slot).status() == SourceStatus::Ready)
             .map(|slot| {
                 let source = document.source_of(slot);
-                match source.kind {
+                match source.kind() {
                     SourceKind::Pdf => ComposeEntry::PdfPage {
-                        path: source.path.clone(),
+                        path: source.path().to_path_buf(),
                         page: slot.page,
                         rotation: slot.rotation,
                     },
                     SourceKind::Image => ComposeEntry::Image {
-                        path: source.path.clone(),
+                        path: source.path().to_path_buf(),
                         fit_to,
                         rotation: slot.rotation,
                     },
@@ -156,25 +156,11 @@ mod tests {
     }
 
     fn pdf_source(id: u64, path: PathBuf, page_sizes: Vec<PageSize>) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path,
-            kind: SourceKind::Pdf,
-            page_count: page_sizes.len() as u32,
-            page_sizes,
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_pdf(SourceId(id), path, page_sizes)
     }
 
     fn image_source(id: u64, path: PathBuf) -> SourceFile {
-        SourceFile {
-            id: SourceId(id),
-            path,
-            kind: SourceKind::Image,
-            page_count: 1,
-            page_sizes: Vec::new(),
-            status: SourceStatus::Ready,
-        }
+        SourceFile::ready_image(SourceId(id), path)
     }
 
     fn plan_with_pdf_and_image() -> (TempDir, MergeDocument) {
@@ -369,10 +355,12 @@ mod tests {
         let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 20, 0)]);
         let sources = vec![
             pdf_source(10, ready_path, vec![PageSize::A4_PORTRAIT]),
-            SourceFile {
-                status: SourceStatus::Encrypted,
-                ..pdf_source(20, missing_failed_path, vec![letter()])
-            },
+            SourceFile::failed(
+                SourceId(20),
+                missing_failed_path,
+                SourceKind::Pdf,
+                SourceStatus::Encrypted,
+            ),
         ];
         let engine = FakePdfEngine::new();
 
@@ -390,14 +378,12 @@ mod tests {
     fn a_document_with_only_unusable_sources_reports_the_real_situation() {
         let temp_dir = tempdir().expect("temporary directory should be created");
         let plan = MergePlan::new(vec![slot(1, 10, 0)]);
-        let sources = vec![SourceFile {
-            status: SourceStatus::Encrypted,
-            ..pdf_source(
-                10,
-                create_file(&temp_dir, "encrypted.pdf"),
-                vec![PageSize::A4_PORTRAIT],
-            )
-        }];
+        let sources = vec![SourceFile::failed(
+            SourceId(10),
+            create_file(&temp_dir, "encrypted.pdf"),
+            SourceKind::Pdf,
+            SourceStatus::Encrypted,
+        )];
         let document = MergeDocument::new(plan, sources);
         let engine = FakePdfEngine::new();
 
