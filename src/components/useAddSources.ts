@@ -1,5 +1,7 @@
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { useCallback } from "react";
+import { errorMessage } from "../lib/error-message";
+import { baseName } from "../lib/output-dir";
 import { addSources, expandPaths } from "../lib/tauri-api";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
@@ -18,21 +20,6 @@ interface AddSourcesController {
   chooseFiles: () => Promise<void>;
   chooseFolder: () => Promise<void>;
   addPaths: (paths: string[]) => Promise<void>;
-}
-
-/** The last path segment, which is all a one-line notice has room for. */
-function baseName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
 
 /**
