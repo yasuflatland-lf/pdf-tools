@@ -7,6 +7,75 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-01
+
+Files reach the document without a drag. A folder dropped on the window used to do nothing at all —
+a directory matched neither extension branch and was skipped without a trace — and it now resolves
+to every PDF and image inside it, at any depth, in the order a file manager would show them. Two
+pickers in the empty state and an `Add` menu that stays in the toolbar for the whole session make a
+mouse or a keyboard enough to build a document, and every add now reports what it did instead of
+failing in silence.
+
+### Sources
+
+- **A dropped folder expands into the files inside it.** A `DirectoryWalker` port lists one
+  directory and an `ExpandSources` use case walks the tree from an explicit stack, because the
+  depth of the tree is the user's choice and must not be able to overflow the call stack.
+  Dot-prefixed entries are skipped, files and folders alike, duplicates are dropped, and a
+  subfolder that cannot be listed is warned about and stepped over rather than costing the user the
+  rest of the scan — the rule adding files already followed for one unreadable file.
+- **The order is the one the file manager shows.** `natural_cmp` compares path components left to
+  right, digit runs by value and text runs case-insensitively, so a folder of `page1.pdf` through
+  `page10.pdf` becomes a document in that order rather than one with `page10` second. The sort runs
+  once over the whole subtree rather than per directory, so the same folder yields the same
+  document however it was reached.
+- **Expanding is a question, not a change.** `expand_paths` returns the resolved paths and touches
+  no plan, which is what lets the interface see how many files a folder holds — and ask about a
+  large one — before anything enters the document. Past 200 files a confirmation names the folder
+  and the count; exactly 200 are added without one.
+- **One classifier decides what is mergeable.** `SourceKind::from_extension` moved onto the type it
+  returns, so adding files and expanding a folder cannot drift apart on which extensions count.
+- **Symlinks are treated two ways on purpose.** A folder the user picked is followed even when it
+  is a link, because picking it was deliberate; a link found inside a listing is reported as a file
+  and never descended into, so a cycle cannot hang a scan.
+
+### Interface
+
+- **The empty state offers `Choose files…` and `Choose folder…`.** It held a drop prompt and
+  nothing to click, which left anyone who cannot comfortably drag — a trackpad, accessibility
+  tooling, a file reached through the dialog's own search field — with no way into the app at all. The two actions stay side by side rather than folding into a menu: this
+  is the one moment the user is deciding how to start, and hiding the folder picker here is exactly
+  what would keep it from being found.
+- **An `Add` menu stays in the toolbar for the whole session.** The empty state unmounts as soon as
+  one slot exists, so its pickers were reachable exactly once per document and a second batch meant
+  dragging again. The menu sits at the head of the bar beside the logo, where the region's width
+  barely moves — unlike the right region, which slides as the merge result chip and its buttons
+  come and go. It opens on click, closes on Escape with focus returned to the trigger, moves
+  between its two items on the arrows, and closes on a click outside without pulling the focus
+  back. Its Escape does not also reach the shell's clear-selection shortcut behind it.
+- **Every add reports what it did.** `DropZone` caught an `addSources` rejection, logged it to the
+  console and returned; a webview listener has nowhere to hand a failure back to, so the user saw a
+  drop land and nothing change. Drops and both pickers now run one procedure that ends in a
+  dismissible notice — the failure's message, or `No PDFs or images found in "Scans".` when a
+  folder held nothing supported. Nothing clears it on a timer, because a message that disappears by
+  itself is unreadable to anyone who looked away while the work ran.
+- **A second add cannot start while one is in flight.** The same flag disables both empty-state
+  pickers and the toolbar menu for the duration, so a folder that takes visible time to expand
+  cannot be expanded twice, and a click that would be turned away never looks like a click that did
+  nothing.
+
+### Documentation
+
+- The README gains an `## Architecture` section holding a generated diagram of the processing path:
+  the three routes `compose` can take, which is the part of the design the README never explained.
+  `docs/images/diagram.py` renders it with [diagrams](https://diagrams.mingrammer.com/) over
+  Graphviz, and `docs/images/README.md` records the regeneration command and the provenance of each
+  icon. No CI job regenerates the image — Graphviz and Python are not in `mise.toml`, and adding
+  them for one picture is not worth the build time.
+- `docs/architecture.md` records the `DirectoryWalker` port, `StdFsWalker`, the `ExpandSources` use
+  case and the `expand_paths` command, including why expansion is a separate command rather than a
+  branch inside `add_sources`.
+
 ## [0.3.0] — 2026-08-01
 
 Pages can be turned. A slot carries a clockwise quarter-turn count, three controls apply it, and
