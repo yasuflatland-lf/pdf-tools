@@ -3,7 +3,7 @@ mod fixtures;
 
 use std::path::Path;
 
-use fixtures::fixture;
+use fixtures::image_fixture as fixture;
 use pdf_tools_core::application::add_sources::AddSources;
 use pdf_tools_core::application::errors::ImageError;
 use pdf_tools_core::application::ports::ImageDecoder;
@@ -92,7 +92,7 @@ fn probe_reports_dimensions_after_exif_orientation() {
 }
 
 #[test]
-fn absent_and_corrupt_exif_remain_ready_sources() {
+fn absent_or_unparseable_exif_yields_no_orientation_and_remains_ready() {
     let paths = [fixture("exif-absent.jpg"), fixture("exif-corrupt.jpg")];
     let document = AddSources {
         pdf: &FakePdfEngine::new(),
@@ -109,9 +109,13 @@ fn absent_and_corrupt_exif_remain_ready_sources() {
         .sources()
         .iter()
         .all(|source| source.status == SourceStatus::Ready));
-    for path in paths {
-        ImageCrateDecoder.decode_first_frame(&path).unwrap();
-    }
+    let absent = ImageCrateDecoder.decode_first_frame(&paths[0]).unwrap();
+    let unparseable = ImageCrateDecoder.decode_first_frame(&paths[1]).unwrap();
+    assert_eq!(
+        (unparseable.width, unparseable.height),
+        (absent.width, absent.height)
+    );
+    assert_eq!(unparseable.rgba, absent.rgba);
 }
 
 #[test]

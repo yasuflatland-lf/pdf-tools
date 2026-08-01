@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 #[path = "../tests/support/fixtures.rs"]
 mod fixtures;
 

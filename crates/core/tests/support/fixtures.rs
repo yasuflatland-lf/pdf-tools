@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use pdfium_render::prelude::{
     PdfColor, PdfPageObjectsCommon, PdfPagePaperSize, PdfPagePaperStandardSize, PdfPagePathObject,
@@ -23,6 +25,11 @@ pub fn fixture(name: &str) -> PathBuf {
     fixtures_dir().join(name)
 }
 
+pub fn image_fixture(name: &str) -> PathBuf {
+    ensure_image_fixtures();
+    fixtures_dir().join(name)
+}
+
 /// Returns the process-wide PDFium engine.
 ///
 /// PDFium's bindings are a process-global singleton, so a second
@@ -38,10 +45,9 @@ pub fn engine() -> &'static PdfiumEngine {
 }
 
 pub fn ensure_generated() {
-    let directory = fixtures_dir();
-    fs::create_dir_all(&directory).expect("fixture directory should be created");
-    exif_fixtures::ensure_generated(&directory);
+    ensure_image_fixtures();
 
+    let directory = fixtures_dir();
     let multi_page_path = directory.join("multi_page.pdf");
     let mixed_size_path = directory.join("mixed_size.pdf");
     let rotated_page_path = directory.join("rotated_page.pdf");
@@ -106,6 +112,12 @@ pub fn ensure_generated() {
     if let Some(bytes) = rotated_page_bytes {
         write_atomic_if_absent(&rotated_page_path, &bytes);
     }
+}
+
+pub fn ensure_image_fixtures() {
+    let directory = fixtures_dir();
+    fs::create_dir_all(&directory).expect("fixture directory should be created");
+    exif_fixtures::ensure_generated(&directory);
 }
 
 fn make_pdf(pdfium: &Pdfium, sizes: &[PdfPagePaperSize]) -> Result<Vec<u8>, PdfiumError> {

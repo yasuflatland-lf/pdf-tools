@@ -414,6 +414,18 @@ describe("PageGrid", () => {
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([2, 3, 4, 5]));
   });
 
+  it("shrinks a Shift-clicked range from its original anchor", async () => {
+    load(source(10, "ungrouped", 5), 5);
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[0]);
+    await click(options[4], { shiftKey: true });
+    await click(options[2], { shiftKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+  });
+
   // The anchor is an identity, not a position: the card a range is measured
   // from. Clamping it to an index the way the focus ring is clamped hands the
   // anchor to whichever unrelated card moved into that index, and the next
@@ -475,6 +487,19 @@ describe("PageGrid", () => {
 
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
     expect(container.querySelector('[role="option"]')?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("completes a partially selected collapsed card with Command-click", async () => {
+    load(source(10, "grouped", 3), 3);
+    useUiStore.setState({ selectedSlots: new Set([1, 3]) });
+    const container = await renderGrid();
+    const option = container.querySelector<HTMLElement>('[role="option"]');
+
+    expect(option?.getAttribute("aria-selected")).toBe("false");
+    await click(option as HTMLElement, { metaKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+    expect(option?.getAttribute("aria-selected")).toBe("true");
   });
 
   // A collapsed group card is the default state of every multi-page PDF, and its
