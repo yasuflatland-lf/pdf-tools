@@ -15,6 +15,7 @@ add, insert, reorder, rotate, delete, undo — is a pure function from one plan 
 | --------------------------- | --------------------------------------------------------------------------------------- |
 | `PageSlot`                  | One output page. Carries its id, source, page index, and clockwise quarter-turn state.  |
 | `MergePlan`                 | The ordered `Vec<PageSlot>`. Vector order _is_ output page order.                       |
+| `SlotRange`                 | A contiguous span of positions in a plan; exists only when it names at least one slot.  |
 | `SourceFile`                | One file the user added: a PDF or an image.                                             |
 | `MergeDocument`             | A `MergePlan` and its sources, with every slot guaranteed to name a listed source.      |
 | Group                       | A contiguous run of slots from one source, drawn as a single card.                      |
@@ -142,7 +143,7 @@ represent only a run whose pages share an orientation.
 ```rust
 pub fn insert_at(plan: &MergePlan, at: usize, slots: &[PageSlot]) -> MergePlan
 pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
-pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
+pub fn reorder(plan: &MergePlan, from: SlotRange, to: usize) -> MergePlan
 pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan
 ```
 
@@ -152,6 +153,12 @@ recent 100 states and discards older ones, so undoing to exhaustion returns to t
 state, not necessarily to the empty document the session started from. A `PageSlot` is 24 bytes
 (two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan costs ~24 KB per stack
 entry — cheap enough that no diffing scheme is warranted.
+
+`reorder` moves a `SlotRange`, and the only way to hold one is to resolve a span against the plan
+it will move within. A span that names no slots — reversed, empty, or entirely past the end —
+resolves to nothing, so a stale selection arriving from the UI is rejected once at that boundary
+instead of being clamped again at every call site. `PlanSession::reorder` then returns having
+opened no history entry, which leaves both the document and the undo stack as they were.
 
 ## State ownership
 

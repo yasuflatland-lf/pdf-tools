@@ -60,6 +60,44 @@ impl MergePlan {
     }
 }
 
+/// A contiguous span of slot positions in a plan.
+///
+/// Constructing one against a plan is the only place bounds are decided, so a
+/// stale selection from the UI resolves to `None` here rather than turning
+/// into a clamp at each call site. An empty or reversed span is not a span:
+/// it names no slots, so there is nothing to move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlotRange {
+    start: usize,
+    end: usize,
+}
+
+impl SlotRange {
+    /// Resolves a half-open span against a plan, or `None` when it names no
+    /// slots -- reversed, empty, or entirely past the end.
+    pub fn resolve(plan: &MergePlan, start: usize, end: usize) -> Option<Self> {
+        let start = start.min(plan.len());
+        let end = end.min(plan.len());
+        (start < end).then_some(Self { start, end })
+    }
+
+    pub fn start(self) -> usize {
+        self.start
+    }
+
+    pub fn end(self) -> usize {
+        self.end
+    }
+
+    #[allow(
+        clippy::len_without_is_empty,
+        reason = "a SlotRange is non-empty by construction"
+    )]
+    pub fn len(self) -> usize {
+        self.end - self.start
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +130,24 @@ mod tests {
         let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 0)]);
         assert_eq!(plan.len(), 2);
         assert_ne!(plan.slots()[0].id, plan.slots()[1].id);
+    }
+
+    #[test]
+    fn a_degenerate_span_resolves_to_nothing() {
+        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 1), slot(3, 10, 2)]);
+
+        assert_eq!(SlotRange::resolve(&plan, 1, 1), None);
+        assert_eq!(SlotRange::resolve(&plan, 2, 1), None);
+        assert_eq!(SlotRange::resolve(&plan, 90, 99), None);
+    }
+
+    #[test]
+    fn a_partly_out_of_range_span_is_clamped() {
+        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 1), slot(3, 10, 2)]);
+        let span = SlotRange::resolve(&plan, 1, 99).unwrap();
+
+        assert_eq!(span.start(), 1);
+        assert_eq!(span.end(), 3);
+        assert_eq!(span.len(), 2);
     }
 }
