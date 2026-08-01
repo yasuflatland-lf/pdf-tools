@@ -8,6 +8,7 @@ import { useUiStore } from "../../store/ui-store";
 import { CardSurface } from "../CardSurface";
 import { PageGrid } from "../PageGrid";
 import { PageList } from "../PageList";
+import { ThumbnailCacheProvider } from "../card/ThumbnailCacheProvider";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -54,6 +55,10 @@ async function mount(node: ReactNode): Promise<HTMLElement> {
   });
 
   return container;
+}
+
+function mountWithCache(node: ReactNode): Promise<HTMLElement> {
+  return mount(<ThumbnailCacheProvider>{node}</ThumbnailCacheProvider>);
 }
 
 describe("CardSurface", () => {
@@ -139,7 +144,7 @@ describe("CardSurface", () => {
       ["grid", <PageGrid key="grid" />],
       ["list", <PageList key="list" />],
     ] as const) {
-      const container = await mount(node);
+      const container = await mountWithCache(node);
       const surface = container.querySelector<HTMLElement>('[role="listbox"]');
 
       expect(surface?.dataset.viewMode).toBe(view);
@@ -151,7 +156,7 @@ describe("CardSurface", () => {
 
   it("announces rotation only when the card is turned", async () => {
     loadCards(1);
-    const container = await mount(<PageGrid />);
+    const container = await mountWithCache(<PageGrid />);
     const option = container.querySelector('[role="option"]');
 
     expect(option?.getAttribute("aria-label")).toBe("Reorder 10.pdf");

@@ -1,6 +1,7 @@
 import { useUiStore } from "../store/ui-store";
-import { CardSurface, useCardSurfaceCache } from "./CardSurface";
+import { CardSurface } from "./CardSurface";
 import { PageListRow } from "./PageListRow";
+import { useThumbnailCache } from "./card/ThumbnailCacheProvider";
 import type { DisplayCard } from "./usePageCards";
 
 const ROW_HEIGHT = 112;
@@ -27,7 +28,7 @@ interface PageListCardProps {
 }
 
 function PageListCard({ card, selected, thumbnailWidth }: PageListCardProps) {
-  const cache = useCardSurfaceCache();
+  const cache = useThumbnailCache();
 
   return (
     <PageListRow

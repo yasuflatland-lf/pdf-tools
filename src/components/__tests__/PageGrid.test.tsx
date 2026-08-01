@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PageSlotDto } from "../../bindings/PageSlotDto";
@@ -8,6 +8,7 @@ import { usePlanStore } from "../../store/plan-store";
 import { useSnapshotSync } from "../../store/useSnapshotSync";
 import { useUiStore } from "../../store/ui-store";
 import { PageGrid } from "../PageGrid";
+import { ThumbnailCacheProvider } from "../card/ThumbnailCacheProvider";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -16,6 +17,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mountedRoots: Root[] = [];
+
+function renderWithCache(children: ReactNode): ReactNode {
+  return <ThumbnailCacheProvider>{children}</ThumbnailCacheProvider>;
+}
 
 function source(id: number, grouping: SourceFileDto["grouping"], pageCount: number): SourceFileDto {
   return {
@@ -75,7 +80,7 @@ async function renderGrid(syncSnapshot = false): Promise<HTMLElement> {
   mountedRoots.push(root);
 
   await act(async () => {
-    root.render(syncSnapshot ? <SnapshotSyncedGrid /> : <PageGrid />);
+    root.render(renderWithCache(syncSnapshot ? <SnapshotSyncedGrid /> : <PageGrid />));
   });
 
   return container;

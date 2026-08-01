@@ -11,6 +11,7 @@ import { PageGrid } from "./PageGrid";
 import { PageList } from "./PageList";
 import { SourceNotice } from "./SourceNotice";
 import { Toolbar } from "./Toolbar";
+import { ThumbnailCacheProvider } from "./card/ThumbnailCacheProvider";
 
 /**
  * Files that contribute no pages would otherwise vanish from the window, since
@@ -84,10 +85,10 @@ export function AppShell() {
                   <AddSourcesButtons />
                 </div>
               </div>
-            ) : viewMode === "grid" ? (
-              <PageGrid />
             ) : (
-              <PageList />
+              <ThumbnailCacheProvider>
+                {viewMode === "grid" ? <PageGrid /> : <PageList />}
+              </ThumbnailCacheProvider>
             )}
           </div>
         </main>
