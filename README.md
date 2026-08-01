@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="public/logo.svg" alt="PDF Tools logo" width="96" height="96">
+
 # PDF Tools
 
 [![CI](https://img.shields.io/github/actions/workflow/status/yasuflatland-lf/pdf-tools/ci.yml?branch=main&label=CI&logo=github)](https://github.com/yasuflatland-lf/pdf-tools/actions/workflows/ci.yml)
@@ -8,6 +12,8 @@
 A native desktop app (macOS / Windows) that merges **PDFs and images (jpg / png / gif)** into a
 single PDF, in any page order you choose. Everything runs locally — **no file ever leaves your
 machine, and the app makes no network requests at all.**
+
+</div>
 
 ## Why
 

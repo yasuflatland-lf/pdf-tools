@@ -55,8 +55,8 @@ committed — it is large, platform-specific, and reproducibly re-fetched. CI ru
 
 ## Branding
 
-`public/logo.svg` holds the only copy of the artwork: the favicon links to it, the toolbar renders
-it, and `mise run gen-icons` rasterizes it into `src-tauri/icons/`. Those PNG/ICNS/ICO files are the
+`public/logo.svg` holds the only copy of the artwork: the README header and the favicon link to it,
+the toolbar renders it, and `mise run gen-icons` rasterizes it into `src-tauri/icons/`. Those PNG/ICNS/ICO files are the
 one set of generated artefacts kept under version control, because the bundler reads them straight
 from the working tree — edit the SVG and re-run the task rather than touching them by hand. The
 shield has to sit inside the `viewBox` or every icon crops it, which `src/__tests__/branding.test.ts`
