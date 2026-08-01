@@ -36,11 +36,28 @@ const MAX_EMBED_DPI: f32 = 200.0;
 /// Each distinct source path is opened once and kept for the duration of the
 /// call, so a plan that draws many pages from one file -- or repeats the same
 /// page -- never reopens it.
+///
+/// A plan naming a file that has gone is rejected before any of it is built.
 pub(super) fn compose(
     engine: &PdfiumEngine,
     plan: &ComposePlan,
     dest: &Path,
 ) -> Result<MergeReport, PdfError> {
+    // Checked here, before the library lock is taken, so a doomed merge neither
+    // blocks another caller on that lock nor pays to copy the pages and decode
+    // the images that precede the entry which has gone. This is a cost guard on
+    // the failure path and not a guarantee: a file can still vanish between
+    // this loop and its own turn below, which is why the per-entry checks
+    // remain the ones that make the operation safe.
+    for entry in &plan.entries {
+        let path = match entry {
+            ComposeEntry::PdfPage { path, .. } | ComposeEntry::Image { path, .. } => path,
+        };
+        if !path.is_file() {
+            return Err(PdfError::Missing { path: path.clone() });
+        }
+    }
+
     engine.with_library(|pdfium| {
         let mut destination = pdfium
             .create_new_pdf()

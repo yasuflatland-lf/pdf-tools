@@ -6,7 +6,7 @@ mod phash;
 use fixtures::{engine, fixture};
 use pdf_tools_core::application::errors::PdfError;
 use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, PdfEngine};
-use pdf_tools_core::domain::geometry::RasterSpec;
+use pdf_tools_core::domain::geometry::{PageSize, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::plan::Rotation;
 use pdfium_render::prelude::{
@@ -212,6 +212,42 @@ fn compose_reports_missing_when_a_source_disappeared() {
         .compose(&plan, &temp_path("missing.pdf"))
         .unwrap_err();
     assert!(matches!(err, PdfError::Missing { .. }));
+}
+
+/// Pins that every source is checked before any entry is processed.
+///
+/// The first entry would fail on its own: its page index is past the end of the
+/// three-page fixture. Reporting the *second* entry's absence instead is what
+/// proves no page was copied and no image decoded before the plan was found to
+/// name a file that has gone. The second entry is an image because that is the
+/// expensive case — an image is decoded rather than copied.
+#[test]
+fn compose_reports_a_missing_source_before_processing_any_entry() {
+    let plan = ComposePlan {
+        entries: vec![
+            ComposeEntry::PdfPage {
+                path: fixture("multi_page.pdf"),
+                page: PageIndex(99),
+                rotation: Default::default(),
+            },
+            ComposeEntry::Image {
+                path: "/gone.png".into(),
+                fit_to: PageSize::A4_PORTRAIT,
+                rotation: Default::default(),
+            },
+        ],
+    };
+
+    let err = engine()
+        .compose(&plan, &temp_path("missing-checked-first.pdf"))
+        .unwrap_err();
+
+    assert_eq!(
+        err,
+        PdfError::Missing {
+            path: "/gone.png".into()
+        }
+    );
 }
 
 #[test]
