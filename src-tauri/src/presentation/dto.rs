@@ -113,7 +113,7 @@ impl PlanSnapshot {
                 .sources()
                 .iter()
                 .map(|source| {
-                    let grouping = if session.is_grouped(source.id) {
+                    let grouping = if session.is_grouped(source.id()) {
                         GroupingDto::Grouped
                     } else {
                         GroupingDto::Ungrouped
@@ -140,24 +140,24 @@ impl From<&PageSlot> for PageSlotDto {
 
 impl SourceFileDto {
     fn project(source: &SourceFile, grouping: GroupingDto) -> Self {
-        let path = source.path.to_string_lossy().into_owned();
+        let path = source.path().to_string_lossy().into_owned();
         let file_name = source
-            .path
+            .path()
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
 
         Self {
-            id: source.id.0,
+            id: source.id().0,
             path,
             file_name,
-            kind: match source.kind {
+            kind: match source.kind() {
                 SourceKind::Pdf => SourceKindDto::Pdf,
                 SourceKind::Image => SourceKindDto::Image,
             },
             grouping,
-            page_count: source.page_count,
-            status: SourceStatusDto::from(&source.status),
+            page_count: source.page_count(),
+            status: SourceStatusDto::from(&source.status()),
         }
     }
 }
@@ -198,18 +198,22 @@ impl From<MergeReport> for MergeReportDto {
 mod tests {
     use std::path::PathBuf;
 
+    use pdf_tools_core::domain::geometry::PageSize;
     use pdf_tools_core::domain::ids::SourceId;
 
     use super::*;
 
     fn source(path: &str, kind: SourceKind, status: SourceStatus) -> SourceFile {
-        SourceFile {
-            id: SourceId(7),
-            path: PathBuf::from(path),
-            kind,
-            page_count: 2,
-            page_sizes: Vec::new(),
-            status,
+        match (kind, status) {
+            (SourceKind::Pdf, SourceStatus::Ready) => SourceFile::ready_pdf(
+                SourceId(7),
+                PathBuf::from(path),
+                vec![PageSize::A4_PORTRAIT; 2],
+            ),
+            (SourceKind::Image, SourceStatus::Ready) => {
+                SourceFile::ready_image(SourceId(7), PathBuf::from(path))
+            }
+            (_, status) => SourceFile::failed(SourceId(7), PathBuf::from(path), kind, status),
         }
     }
 
