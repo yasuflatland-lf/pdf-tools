@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
+import { Notice } from "./card/Notice";
 
 function statusMessage(status: SourceStatusDto): string | null {
   if (status.kind === "ready") {
@@ -27,9 +28,5 @@ export function ErrorBadge({ status }: { status: SourceStatusDto }): ReactElemen
     return null;
   }
 
-  return (
-    <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
-      {message}
-    </p>
-  );
+  return <Notice>{message}</Notice>;
 }
