@@ -5,10 +5,11 @@ mod phash;
 
 use fixtures::{engine, fixture};
 use image::imageops::rotate90;
-use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, PdfEngine};
+use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, ImageDecoder, PdfEngine};
 use pdf_tools_core::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::plan::Rotation;
+use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdfium_render::prelude::{PdfPageObjectCommon, PdfPageObjectsCommon, PdfPageRenderRotation};
 use phash::{average_hash, hamming_distance, render_page};
 use std::path::PathBuf;
@@ -163,6 +164,106 @@ fn a_baseline_jpeg_is_embedded_as_its_original_stream() {
     let out = temp_path("baseline-passthrough.pdf");
     engine().compose(&image_plan("sample.jpg"), &out).unwrap();
     assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn an_identity_exif_jpeg_is_embedded_as_its_original_stream() {
+    let out = temp_path("identity-exif-passthrough.pdf");
+    engine()
+        .compose(&image_plan("exif-orientation-1.jpg"), &out)
+        .unwrap();
+    assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
+}
+
+#[test]
+fn quarter_turn_exif_jpegs_keep_their_original_streams() {
+    for orientation in [3, 6, 8] {
+        let out = temp_path(&format!("orientation-{orientation}-passthrough.pdf"));
+        engine()
+            .compose(
+                &image_plan(&format!("exif-orientation-{orientation}.jpg")),
+                &out,
+            )
+            .unwrap();
+        assert_eq!(
+            image_filters(&out),
+            vec!["DCTDecode".to_owned()],
+            "EXIF orientation {orientation} should keep JPEG passthrough"
+        );
+    }
+}
+
+#[test]
+fn a_sideways_exif_jpeg_is_oriented_without_reencoding_or_turning_its_sheet() {
+    let passthrough_out = temp_path("sideways-exif-passthrough.pdf");
+    let raster_out = temp_path("sideways-exif-raster.pdf");
+    let raster_path = temp_path("sideways-exif-reference.png");
+    let raster = ImageCrateDecoder
+        .decode_first_frame(&fixture("exif-orientation-6.jpg"))
+        .unwrap();
+    image::save_buffer(
+        &raster_path,
+        &raster.rgba,
+        raster.width,
+        raster.height,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+
+    engine()
+        .compose(&image_plan("exif-orientation-6.jpg"), &passthrough_out)
+        .unwrap();
+    let raster_plan = ComposePlan {
+        entries: vec![ComposeEntry::Image {
+            path: raster_path,
+            fit_to: PageSize::A4_PORTRAIT,
+            rotation: Default::default(),
+        }],
+    };
+    engine().compose(&raster_plan, &raster_out).unwrap();
+
+    let passthrough = render_page(
+        &passthrough_out,
+        PageIndex(0),
+        RasterSpec {
+            target_width_px: 128,
+        },
+    );
+    let expected = render_page(
+        &raster_out,
+        PageIndex(0),
+        RasterSpec {
+            target_width_px: 128,
+        },
+    );
+
+    assert_eq!(
+        image_filters(&passthrough_out),
+        vec!["DCTDecode".to_owned()]
+    );
+    assert_eq!(page_rotation(&passthrough_out), PdfPageRenderRotation::None);
+    assert!(
+        hamming_distance(average_hash(&passthrough), average_hash(&expected)) <= 4,
+        "the passthrough JPEG did not match the oriented raster path"
+    );
+}
+
+#[test]
+fn mirrored_exif_jpegs_fall_back_to_the_raster_path() {
+    for orientation in [2, 4, 5, 7] {
+        let out = temp_path(&format!("orientation-{orientation}-fallback.pdf"));
+        engine()
+            .compose(
+                &image_plan(&format!("exif-orientation-{orientation}.jpg")),
+                &out,
+            )
+            .unwrap();
+        assert_eq!(
+            image_filters(&out),
+            vec!["FlateDecode".to_owned()],
+            "EXIF orientation {orientation} should use the raster path"
+        );
+    }
 }
 
 #[test]

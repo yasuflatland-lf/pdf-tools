@@ -7,6 +7,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+#[path = "../../examples/support/exif_fixtures.rs"]
+mod exif_fixtures;
+
 pub fn library_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/resources/pdfium")
 }
@@ -37,6 +40,7 @@ pub fn engine() -> &'static PdfiumEngine {
 pub fn ensure_generated() {
     let directory = fixtures_dir();
     fs::create_dir_all(&directory).expect("fixture directory should be created");
+    exif_fixtures::ensure_generated(&directory);
 
     let multi_page_path = directory.join("multi_page.pdf");
     let mixed_size_path = directory.join("mixed_size.pdf");

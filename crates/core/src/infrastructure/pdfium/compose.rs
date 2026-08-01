@@ -4,12 +4,13 @@ use crate::application::errors::{ImageError, PdfError};
 use crate::application::ports::{ComposeEntry, ComposePlan, ImageDecoder, MergeReport};
 use crate::domain::geometry::PageSize;
 use crate::domain::plan::Rotation;
-use crate::infrastructure::image_decoder::ImageCrateDecoder;
+use crate::infrastructure::image_decoder::{probe_with_orientation, ImageCrateDecoder};
 use crate::infrastructure::jpeg::{self, Passthrough};
 use image::imageops::FilterType;
+use image::metadata::Orientation;
 use image::{DynamicImage, RgbaImage};
 use pdfium_render::prelude::{
-    PdfColor, PdfDocument, PdfPageImageObject, PdfPageObjectsCommon, PdfPagePaperSize,
+    PdfColor, PdfDocument, PdfMatrix, PdfPageImageObject, PdfPageObjectsCommon, PdfPagePaperSize,
     PdfPagePathObject, PdfPageRenderRotation, PdfPoints, PdfRect,
 };
 use std::collections::HashMap;
@@ -111,7 +112,7 @@ pub(super) fn compose(
                     fit_to,
                     rotation,
                 } => {
-                    let (mut image_object, placement) = image_object(&destination, path, *fit_to)?;
+                    let image_object = image_object(&destination, path, *fit_to)?;
 
                     let mut page = destination
                         .pages_mut()
@@ -137,12 +138,6 @@ pub(super) fn compose(
                         .add_path_object(background)
                         .map_err(|error| image_composition_error(path, error))?;
 
-                    image_object
-                        .translate(
-                            PdfPoints::new(placement.left),
-                            PdfPoints::new(placement.bottom),
-                        )
-                        .map_err(|error| image_composition_error(path, error))?;
                     page.objects_mut()
                         .add_image_object(image_object)
                         .map_err(|error| image_composition_error(path, error))?;
@@ -251,20 +246,20 @@ fn image_object<'a>(
     document: &PdfDocument<'a>,
     path: &Path,
     fit_to: PageSize,
-) -> Result<(PdfPageImageObject<'a>, Placement), PdfError> {
+) -> Result<PdfPageImageObject<'a>, PdfError> {
     if let Some(bytes) = passthrough_bytes(path) {
-        // Only the dimensions are needed; probe reads the header, not the pixels.
-        let info = ImageCrateDecoder
-            .probe(path)
-            .map_err(|error| map_image_error(path, error))?;
-        let placement = place(fit_to, info.width_px, info.height_px);
-        // The object arrives one point square, so the scale is not optional.
-        let mut object = PdfPageImageObject::new_from_jpeg_reader(document, Cursor::new(bytes))
-            .map_err(|error| image_composition_error(path, error))?;
-        object
-            .scale(placement.width, placement.height)
-            .map_err(|error| image_composition_error(path, error))?;
-        return Ok((object, placement));
+        // Only dimensions and EXIF metadata are needed; this reads headers, not pixels.
+        let oriented =
+            probe_with_orientation(path).map_err(|error| map_image_error(path, error))?;
+        if !is_mirrored(oriented.orientation) {
+            let placement = place(fit_to, oriented.info.width_px, oriented.info.height_px);
+            let mut object = PdfPageImageObject::new_from_jpeg_reader(document, Cursor::new(bytes))
+                .map_err(|error| image_composition_error(path, error))?;
+            object
+                .reset_matrix(placement_matrix(&placement, oriented.orientation))
+                .map_err(|error| image_composition_error(path, error))?;
+            return Ok(object);
+        }
     }
 
     let raster = ImageCrateDecoder
@@ -278,15 +273,55 @@ fn image_object<'a>(
             reason: "decoded image buffer has invalid dimensions".into(),
         })?;
     let image = cap_resolution(image, &placement);
-    let object = PdfPageImageObject::new_with_size(
+    let mut object = PdfPageImageObject::new_with_size(
         document,
         &image,
         PdfPoints::new(placement.width),
         PdfPoints::new(placement.height),
     )
     .map_err(|error| image_composition_error(path, error))?;
+    object
+        .translate(
+            PdfPoints::new(placement.left),
+            PdfPoints::new(placement.bottom),
+        )
+        .map_err(|error| image_composition_error(path, error))?;
 
-    Ok((object, placement))
+    Ok(object)
+}
+
+fn is_mirrored(orientation: Orientation) -> bool {
+    matches!(
+        orientation,
+        Orientation::FlipHorizontal
+            | Orientation::FlipVertical
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    )
+}
+
+fn placement_matrix(placement: &Placement, orientation: Orientation) -> PdfMatrix {
+    let Placement {
+        left,
+        bottom,
+        width,
+        height,
+    } = *placement;
+
+    match orientation {
+        Orientation::NoTransforms => PdfMatrix::new(width, 0.0, 0.0, height, left, bottom),
+        Orientation::Rotate90 => PdfMatrix::new(0.0, -height, width, 0.0, left, bottom + height),
+        Orientation::Rotate180 => {
+            PdfMatrix::new(-width, 0.0, 0.0, -height, left + width, bottom + height)
+        }
+        Orientation::Rotate270 => PdfMatrix::new(0.0, height, -width, 0.0, left + width, bottom),
+        Orientation::FlipHorizontal
+        | Orientation::FlipVertical
+        | Orientation::Rotate90FlipH
+        | Orientation::Rotate270FlipH => {
+            unreachable!("mirrored orientations use the raster path")
+        }
+    }
 }
 
 fn write_error(path: &Path, reason: String) -> PdfError {
