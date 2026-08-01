@@ -64,11 +64,31 @@ fn all_exif_orientations_decode_to_the_displayed_pixels() {
 
 #[test]
 fn probe_reports_dimensions_after_exif_orientation() {
-    let info = ImageCrateDecoder
-        .probe(&fixture("exif-orientation-6.jpg"))
-        .unwrap();
+    // The fixture is stored 48x32. Four of the eight orientations exchange the
+    // axes, and the dominant-page-size census is computed from what `probe`
+    // reports, so leaving any of them out lands an image on a sheet of the wrong
+    // shape.
+    for value in [1, 2, 3, 4] {
+        let info = ImageCrateDecoder
+            .probe(&fixture(&format!("exif-orientation-{value}.jpg")))
+            .unwrap();
+        assert_eq!(
+            (info.width_px, info.height_px),
+            (48, 32),
+            "EXIF orientation {value} should keep the stored axes"
+        );
+    }
 
-    assert_eq!((info.width_px, info.height_px), (32, 48));
+    for value in [5, 6, 7, 8] {
+        let info = ImageCrateDecoder
+            .probe(&fixture(&format!("exif-orientation-{value}.jpg")))
+            .unwrap();
+        assert_eq!(
+            (info.width_px, info.height_px),
+            (32, 48),
+            "EXIF orientation {value} should report exchanged axes"
+        );
+    }
 }
 
 #[test]

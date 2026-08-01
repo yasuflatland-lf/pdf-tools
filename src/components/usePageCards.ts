@@ -147,6 +147,11 @@ interface CardPosition {
   key: string;
 }
 
+/**
+ * Where the focus ring goes. The focus is a place the user is looking at, so a
+ * card that has gone leaves the ring near where it stood and the effect below
+ * re-anchors it to whatever took the position.
+ */
 function resolveCardIndex(position: CardPosition | null, cards: DisplayCard[]): number {
   if (position === null) {
     return -1;
@@ -154,6 +159,17 @@ function resolveCardIndex(position: CardPosition | null, cards: DisplayCard[]): 
 
   const byKey = cards.findIndex((card) => card.key === position.key);
   return byKey >= 0 ? byKey : Math.min(position.index, cards.length - 1);
+}
+
+/**
+ * Where a Shift-click measures its range from. Unlike the focus, the anchor is
+ * an identity -- the card whose own pages the range is meant to start at -- so a
+ * card that has gone takes the anchor with it. Clamping it to a position instead
+ * would measure the range from whichever unrelated card moved into that index
+ * when a group folded, a run refolded after a rotation, or a delete landed.
+ */
+function resolveAnchorIndex(position: CardPosition | null, cards: DisplayCard[]): number {
+  return position === null ? -1 : cards.findIndex((card) => card.key === position.key);
 }
 
 /**
@@ -176,7 +192,7 @@ export function useCardFocus({
   // A card can disappear after delete, reorder or undo. Stay near the same
   // position until the effect below anchors focus to the replacement card.
   const focusedIndex = resolveCardIndex(focused, cards);
-  const anchorIndex = resolveCardIndex(selectionAnchor, cards);
+  const anchorIndex = resolveAnchorIndex(selectionAnchor, cards);
 
   // Once the focus has fallen back onto whatever card took that position,
   // re-anchor it to that card and make the selection follow it, or the next
@@ -199,6 +215,9 @@ export function useCardFocus({
     const nextPosition = { key: card.key, index };
     setFocused(nextPosition);
 
+    // With no surviving anchor a Shift-click has nothing to measure from, so it
+    // falls through to the plain branch below, which selects this card alone and
+    // makes it the anchor the next Shift-click extends from.
     if (modifiers.shiftKey && anchorIndex >= 0) {
       const rangeStart = Math.min(anchorIndex, index);
       const rangeEnd = Math.max(anchorIndex, index);

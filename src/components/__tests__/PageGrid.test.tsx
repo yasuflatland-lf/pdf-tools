@@ -37,6 +37,22 @@ function slots(sourceId: number, pageCount: number): PageSlotDto[] {
   }));
 }
 
+/**
+ * A grouped five-page PDF followed by an ungrouped five-page source, so a card
+ * can be folded away without touching the cards after it.
+ */
+function loadTwoSources(): void {
+  usePlanStore.getState().setSnapshot({
+    slots: [
+      ...Array.from({ length: 5 }, (_, page) => ({ id: page + 1, source: 10, page, rotation: 0 })),
+      ...Array.from({ length: 5 }, (_, page) => ({ id: page + 6, source: 20, page, rotation: 0 })),
+    ],
+    sources: [source(10, "grouped", 5), source(20, "ungrouped", 5)],
+    can_undo: false,
+    can_redo: false,
+  });
+}
+
 function load(sourceFile: SourceFileDto, pageCount: number): void {
   usePlanStore.getState().setSnapshot({
     slots: slots(sourceFile.id, pageCount),
@@ -322,12 +338,12 @@ describe("PageGrid", () => {
     });
   });
 
-  // A collapsed group card -- the default state of every multi-page PDF -- is
-  // blanketed by the full-preview Expand overlay, so the pointer never rests on
-  // anything inside the card's own subtree. jsdom applies no stylesheet, so what
-  // the test can check is the one structural condition `.group:hover` needs: the
-  // marked ancestor has to contain the overlay as well as the buttons.
-  it("keeps the rotate controls inside the hover scope the expand overlay sits in", async () => {
+  // The Expand control sits outside the card, so a pointer resting on it is
+  // outside the hover marker inside the card. jsdom applies no stylesheet, so
+  // what the test can check is the one structural condition `.group:hover`
+  // needs: the marked ancestor has to contain the control as well as the
+  // buttons.
+  it("keeps the rotate controls inside the hover scope the expand control sits in", async () => {
     load(source(10, "grouped", 3), 3);
 
     const container = await renderGrid();
@@ -398,6 +414,32 @@ describe("PageGrid", () => {
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([2, 3, 4, 5]));
   });
 
+  // The anchor is an identity, not a position: the card a range is measured
+  // from. Clamping it to an index the way the focus ring is clamped hands the
+  // anchor to whichever unrelated card moved into that index, and the next
+  // Shift-click silently swallows pages of another file.
+  it("drops a selection anchor whose card has been folded away", async () => {
+    loadTwoSources();
+    useUiStore.setState({ expandedSources: new Set([10]) });
+    const container = await renderGrid();
+    const options = () => [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options()[3]);
+    await click(options()[7], { shiftKey: true });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4, 5, 6, 7, 8]));
+
+    // Collapsing replaces the five page cards with one group card, so the
+    // anchor's key is gone while the focused card is still there -- the focus
+    // repair never runs and cannot rescue the anchor.
+    await act(async () => {
+      useUiStore.getState().toggleExpanded(10);
+    });
+
+    await click(options()[0], { shiftKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3, 4, 5]));
+  });
+
   it("starts a drag after pointer movement without changing the selection", async () => {
     load(source(10, "ungrouped", 2), 2);
     useUiStore.setState({ selectedSlots: new Set([2]) });
@@ -433,6 +475,30 @@ describe("PageGrid", () => {
 
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
     expect(container.querySelector('[role="option"]')?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  // A collapsed group card is the default state of every multi-page PDF, and its
+  // preview is most of the card. A control painted across that preview takes
+  // every click on it -- an ordinary click, a Command-click, and the Shift-click
+  // that was meant to end a range -- so the card expands instead of being
+  // selected. jsdom hit-tests nothing, so a click dispatched on the thumbnail
+  // reaches the card whatever paints above it; what the test can check is the
+  // geometry the control's own classes describe.
+  it("leaves the collapsed card's preview selectable instead of blanketing it", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLElement>('[aria-label="Expand 10.pdf"]');
+
+    expect(expand).not.toBeNull();
+    // `h-60` is the preview area's own height and `inset-x-0` its full width.
+    expect(expand?.className).not.toContain("h-60");
+    expect(expand?.className).not.toContain("inset-x-0");
+
+    await click(container.querySelector("img") as HTMLElement);
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(false);
   });
 
   it("keeps a rotate-button press away from selection and drag state", async () => {

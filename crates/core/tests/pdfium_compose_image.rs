@@ -175,34 +175,16 @@ fn an_identity_exif_jpeg_is_embedded_as_its_original_stream() {
     assert_eq!(image_filters(&out), vec!["DCTDecode".to_owned()]);
 }
 
-#[test]
-fn quarter_turn_exif_jpegs_keep_their_original_streams() {
-    for orientation in [3, 6, 8] {
-        let out = temp_path(&format!("orientation-{orientation}-passthrough.pdf"));
-        engine()
-            .compose(
-                &image_plan(&format!("exif-orientation-{orientation}.jpg")),
-                &out,
-            )
-            .unwrap();
-        assert_eq!(
-            image_filters(&out),
-            vec!["DCTDecode".to_owned()],
-            "EXIF orientation {orientation} should keep JPEG passthrough"
-        );
-    }
-}
-
-#[test]
-fn a_sideways_exif_jpeg_is_oriented_without_reencoding_or_turning_its_sheet() {
-    let passthrough_out = temp_path("sideways-exif-passthrough.pdf");
-    let raster_out = temp_path("sideways-exif-raster.pdf");
-    let raster_path = temp_path("sideways-exif-reference.png");
+/// Renders the composed page of an EXIF-oriented JPEG next to the page composed
+/// from the raster the decoder has already oriented, both at the same width.
+fn oriented_jpeg_and_reference(value: u8) -> (std::path::PathBuf, RasterImage, RasterImage) {
+    let jpeg = format!("exif-orientation-{value}.jpg");
+    let reference_png = temp_path(&format!("exif-orientation-{value}-reference.png"));
     let raster = ImageCrateDecoder
-        .decode_first_frame(&fixture("exif-orientation-6.jpg"))
+        .decode_first_frame(&fixture(&jpeg))
         .unwrap();
     image::save_buffer(
-        &raster_path,
+        &reference_png,
         &raster.rgba,
         raster.width,
         raster.height,
@@ -210,59 +192,96 @@ fn a_sideways_exif_jpeg_is_oriented_without_reencoding_or_turning_its_sheet() {
     )
     .unwrap();
 
+    let passthrough_out = temp_path(&format!("exif-orientation-{value}-passthrough.pdf"));
+    let reference_out = temp_path(&format!("exif-orientation-{value}-reference.pdf"));
     engine()
-        .compose(&image_plan("exif-orientation-6.jpg"), &passthrough_out)
+        .compose(&image_plan(&jpeg), &passthrough_out)
         .unwrap();
-    let raster_plan = ComposePlan {
-        entries: vec![ComposeEntry::Image {
-            path: raster_path,
-            fit_to: PageSize::A4_PORTRAIT,
-            rotation: Default::default(),
-        }],
+    engine()
+        .compose(
+            &ComposePlan {
+                entries: vec![ComposeEntry::Image {
+                    path: reference_png,
+                    fit_to: PageSize::A4_PORTRAIT,
+                    rotation: Default::default(),
+                }],
+            },
+            &reference_out,
+        )
+        .unwrap();
+
+    let spec = RasterSpec {
+        target_width_px: 128,
     };
-    engine().compose(&raster_plan, &raster_out).unwrap();
-
-    let passthrough = render_page(
-        &passthrough_out,
-        PageIndex(0),
-        RasterSpec {
-            target_width_px: 128,
-        },
-    );
-    let expected = render_page(
-        &raster_out,
-        PageIndex(0),
-        RasterSpec {
-            target_width_px: 128,
-        },
-    );
-
-    assert_eq!(
-        image_filters(&passthrough_out),
-        vec!["DCTDecode".to_owned()]
-    );
-    assert_eq!(page_rotation(&passthrough_out), PdfPageRenderRotation::None);
-    assert!(
-        hamming_distance(average_hash(&passthrough), average_hash(&expected)) <= 4,
-        "the passthrough JPEG did not match the oriented raster path"
-    );
+    let actual = render_page(&passthrough_out, PageIndex(0), spec);
+    let expected = render_page(&reference_out, PageIndex(0), spec);
+    (passthrough_out, actual, expected)
 }
 
+/// The pixels whose channels differ by more than JPEG quantisation explains.
+/// One page carries the original DCT stream and the other a deflated raster of
+/// the same decoded pixels, so a handful of levels of difference is expected and
+/// a wrong orientation is a whole block of colour in the wrong place.
+fn mismatched_pixels(actual: &RasterImage, expected: &RasterImage) -> usize {
+    const TOLERANCE: u8 = 24;
+
+    if (actual.width, actual.height) != (expected.width, expected.height) {
+        return usize::MAX;
+    }
+
+    actual
+        .rgba
+        .chunks_exact(4)
+        .zip(expected.rgba.chunks_exact(4))
+        .filter(|(left, right)| {
+            left[..3]
+                .iter()
+                .zip(right[..3].iter())
+                .any(|(a, b)| a.abs_diff(*b) > TOLERANCE)
+        })
+        .count()
+}
+
+/// Every EXIF orientation, including the four mirrored ones, must reach the page
+/// through the passthrough path: the acceptance list says passthrough JPEGs are
+/// still `DCTDecode` after this change, and a PDF image matrix expresses a mirror
+/// as readily as a rotation.
+///
+/// Each page is compared pixel by pixel against the page composed from the raster
+/// `decode_first_frame` has already oriented -- an average hash is too coarse
+/// here, because orientation 1 and orientation 3 of this fixture are only four
+/// bits apart, exactly the tolerance the rotation tests allow.
 #[test]
-fn mirrored_exif_jpegs_fall_back_to_the_raster_path() {
-    for orientation in [2, 4, 5, 7] {
-        let out = temp_path(&format!("orientation-{orientation}-fallback.pdf"));
-        engine()
-            .compose(
-                &image_plan(&format!("exif-orientation-{orientation}.jpg")),
-                &out,
-            )
-            .unwrap();
+fn every_exif_orientation_is_oriented_without_reencoding_or_turning_its_sheet() {
+    let (_, identity, _) = oriented_jpeg_and_reference(1);
+
+    for value in 1..=8 {
+        let (out, actual, expected) = oriented_jpeg_and_reference(value);
+
         assert_eq!(
             image_filters(&out),
-            vec!["FlateDecode".to_owned()],
-            "EXIF orientation {orientation} should use the raster path"
+            vec!["DCTDecode".to_owned()],
+            "EXIF orientation {value} should keep JPEG passthrough"
         );
+        assert_eq!(
+            page_rotation(&out),
+            PdfPageRenderRotation::None,
+            "EXIF orientation {value} should orient the image, not the sheet"
+        );
+        assert_eq!(
+            mismatched_pixels(&actual, &expected),
+            0,
+            "EXIF orientation {value} did not render as the oriented raster"
+        );
+        // Without this the loop would pass on a fixture too symmetric to tell
+        // one orientation from another.
+        if value != 1 {
+            assert_ne!(
+                mismatched_pixels(&actual, &identity),
+                0,
+                "EXIF orientation {value} is indistinguishable from orientation 1"
+            );
+        }
     }
 }
 

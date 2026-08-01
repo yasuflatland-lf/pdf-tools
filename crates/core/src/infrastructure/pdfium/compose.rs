@@ -251,15 +251,13 @@ fn image_object<'a>(
         // Only dimensions and EXIF metadata are needed; this reads headers, not pixels.
         let oriented =
             probe_with_orientation(path).map_err(|error| map_image_error(path, error))?;
-        if !is_mirrored(oriented.orientation) {
-            let placement = place(fit_to, oriented.info.width_px, oriented.info.height_px);
-            let mut object = PdfPageImageObject::new_from_jpeg_reader(document, Cursor::new(bytes))
-                .map_err(|error| image_composition_error(path, error))?;
-            object
-                .reset_matrix(placement_matrix(&placement, oriented.orientation))
-                .map_err(|error| image_composition_error(path, error))?;
-            return Ok(object);
-        }
+        let placement = place(fit_to, oriented.info.width_px, oriented.info.height_px);
+        let mut object = PdfPageImageObject::new_from_jpeg_reader(document, Cursor::new(bytes))
+            .map_err(|error| image_composition_error(path, error))?;
+        object
+            .reset_matrix(placement_matrix(&placement, oriented.orientation))
+            .map_err(|error| image_composition_error(path, error))?;
+        return Ok(object);
     }
 
     let raster = ImageCrateDecoder
@@ -290,16 +288,13 @@ fn image_object<'a>(
     Ok(object)
 }
 
-fn is_mirrored(orientation: Orientation) -> bool {
-    matches!(
-        orientation,
-        Orientation::FlipHorizontal
-            | Orientation::FlipVertical
-            | Orientation::Rotate90FlipH
-            | Orientation::Rotate270FlipH
-    )
-}
-
+/// Maps the image object's unit square onto `placement` so that the stored
+/// pixels appear as the EXIF orientation says they should.
+///
+/// The unit square is the stored image with its first row along the top edge, so
+/// each arm names where the stored top-left corner lands. A mirrored orientation
+/// is simply a matrix whose determinant is negative, which is why none of the
+/// eight has to leave the passthrough path and be decoded and re-embedded.
 fn placement_matrix(placement: &Placement, orientation: Orientation) -> PdfMatrix {
     let Placement {
         left,
@@ -310,17 +305,21 @@ fn placement_matrix(placement: &Placement, orientation: Orientation) -> PdfMatri
 
     match orientation {
         Orientation::NoTransforms => PdfMatrix::new(width, 0.0, 0.0, height, left, bottom),
-        Orientation::Rotate90 => PdfMatrix::new(0.0, -height, width, 0.0, left, bottom + height),
+        Orientation::FlipHorizontal => {
+            PdfMatrix::new(-width, 0.0, 0.0, height, left + width, bottom)
+        }
         Orientation::Rotate180 => {
             PdfMatrix::new(-width, 0.0, 0.0, -height, left + width, bottom + height)
         }
-        Orientation::Rotate270 => PdfMatrix::new(0.0, height, -width, 0.0, left + width, bottom),
-        Orientation::FlipHorizontal
-        | Orientation::FlipVertical
-        | Orientation::Rotate90FlipH
-        | Orientation::Rotate270FlipH => {
-            unreachable!("mirrored orientations use the raster path")
+        Orientation::FlipVertical => {
+            PdfMatrix::new(width, 0.0, 0.0, -height, left, bottom + height)
         }
+        Orientation::Rotate90FlipH => {
+            PdfMatrix::new(0.0, -height, -width, 0.0, left + width, bottom + height)
+        }
+        Orientation::Rotate90 => PdfMatrix::new(0.0, -height, width, 0.0, left, bottom + height),
+        Orientation::Rotate270FlipH => PdfMatrix::new(0.0, height, width, 0.0, left, bottom),
+        Orientation::Rotate270 => PdfMatrix::new(0.0, height, -width, 0.0, left + width, bottom),
     }
 }
 
