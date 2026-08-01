@@ -72,7 +72,11 @@ infrastructure → domain. Nothing flows back. Concretely:
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
   holds the current document and its undo/redo stacks. `ExpandSources` resolves the folders in a
   picked or dropped selection to the supported files inside them, in natural order, so the same
-  folder yields the same document however it arrived.
+  folder yields the same document however it arrived. `RasterizeSlot` renders one slot to pixels,
+  sending it to the PDF engine or to the image decoder according to its source's kind, so that
+  choice lives beside `Compose`'s rather than in a command. Its `SlotTarget::resolve` is the
+  separate, cheap first half: it copies the one path, kind and page index the engine needs, so a
+  thumbnail request can release the session lock before rendering without copying the plan.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
   `ImageCrateDecoder` (the `image` crate), a PNG encoder, `StdFsWalker`, and `FakePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
