@@ -1,4 +1,4 @@
-/** A slot's clockwise quarter-turn count, as the snapshot reports it. */
+/** Degrees in one clockwise quarter turn. */
 export const QUARTER_TURN_DEGREES = 90;
 
 /** How far clockwise a slot is turned, in degrees. */
