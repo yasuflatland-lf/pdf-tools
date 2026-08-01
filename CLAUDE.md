@@ -22,6 +22,7 @@ State: v0.4.0. The merge plan (an ordered list of one-page slots) is canonical i
   - `docs/development.md` — tech stack, dev commands, testing policy, PR rules
 - **L3 = `.claude/`**: deep per-task reference — add files here rather than growing L1.
   - `.claude/macos-code-signing.md` — the self-signed signing certificate: generating it, registering the secrets, verifying it before a release run
+  - `.claude/numeric-precision.md` — why page geometry is `f32`, why arbitrary precision is barred from `domain`, and what to change first if precision ever bites
 
 ## Source of truth
 
