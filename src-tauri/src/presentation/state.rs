@@ -2,11 +2,14 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use pdf_tools_core::application::errors::PdfError;
-use pdf_tools_core::application::ports::{ComposePlan, ImageDecoder, MergeReport, PdfEngine};
+use pdf_tools_core::application::ports::{
+    ComposePlan, DirectoryWalker, ImageDecoder, MergeReport, PdfEngine,
+};
 use pdf_tools_core::application::session::PlanSession;
 use pdf_tools_core::domain::geometry::{RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::source::DocumentInfo;
+use pdf_tools_core::infrastructure::fs_walker::StdFsWalker;
 
 /// The Tauri-managed application state.
 ///
@@ -17,15 +20,27 @@ pub struct AppState {
     pub(crate) session: Mutex<PlanSession>,
     pub(crate) pdf: Arc<dyn PdfEngine>,
     pub(crate) images: Arc<dyn ImageDecoder>,
+    pub(crate) walker: Arc<dyn DirectoryWalker>,
 }
 
 impl AppState {
-    /// Creates an empty session backed by the given engines.
+    /// Creates an empty session backed by the given engines and the real
+    /// filesystem. Tests that never expand a folder keep using this.
     pub fn with_engines(pdf: Arc<dyn PdfEngine>, images: Arc<dyn ImageDecoder>) -> Self {
+        Self::with_ports(pdf, images, Arc::new(StdFsWalker))
+    }
+
+    /// Full injection, for the tests that drive folder expansion.
+    pub fn with_ports(
+        pdf: Arc<dyn PdfEngine>,
+        images: Arc<dyn ImageDecoder>,
+        walker: Arc<dyn DirectoryWalker>,
+    ) -> Self {
         Self {
             session: Mutex::new(PlanSession::new()),
             pdf,
             images,
+            walker,
         }
     }
 
@@ -57,6 +72,10 @@ impl AppState {
 
     pub fn images(&self) -> &dyn ImageDecoder {
         self.images.as_ref()
+    }
+
+    pub fn walker(&self) -> &dyn DirectoryWalker {
+        self.walker.as_ref()
     }
 }
 

@@ -2,10 +2,12 @@ pub mod logging;
 pub mod presentation;
 
 use pdf_tools_core::application::ports::PdfEngine;
+use pdf_tools_core::infrastructure::fs_walker::StdFsWalker;
 use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use presentation::commands::{
-    add_sources, compose, rasterize_slot, redo, remove_slots, reorder, rotate_slots, undo,
+    add_sources, compose, expand_paths, rasterize_slot, redo, remove_slots, reorder, rotate_slots,
+    undo,
 };
 use presentation::state::{AppState, UnavailablePdfEngine};
 use std::path::PathBuf;
@@ -79,15 +81,17 @@ pub fn run() {
                 Ok(engine) => engine.clone(),
                 Err(error) => Arc::new(UnavailablePdfEngine::new(error.clone())),
             };
-            app.manage(AppState::with_engines(
+            app.manage(AppState::with_ports(
                 pdf_engine,
                 Arc::new(ImageCrateDecoder),
+                Arc::new(StdFsWalker),
             ));
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             add_sources,
+            expand_paths,
             reorder,
             remove_slots,
             rotate_slots,

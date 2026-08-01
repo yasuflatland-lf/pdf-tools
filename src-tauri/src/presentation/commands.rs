@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
+use pdf_tools_core::application::expand_sources::ExpandSources;
 use pdf_tools_core::domain::geometry::RasterSpec;
 use pdf_tools_core::domain::ids::SlotId;
 use pdf_tools_core::domain::source::SourceKind;
@@ -26,6 +27,29 @@ pub fn add_sources_inner(state: &AppState, paths: Vec<String>) -> Result<PlanSna
 #[tauri::command]
 pub fn add_sources(state: State<'_, AppState>, paths: Vec<String>) -> Result<PlanSnapshot, String> {
     add_sources_inner(&state, paths)
+}
+
+/// The body of the `expand_paths` command, kept free of Tauri's `State`
+/// wrapper so it can be exercised in tests without starting a webview.
+///
+/// Resolves folders to the files inside them and leaves everything else alone.
+/// It is deliberately separate from `add_sources`: the frontend has to be able
+/// to see the count, and ask about it, before anything enters the plan.
+pub fn expand_paths_inner(state: &AppState, paths: Vec<String>) -> Result<Vec<String>, String> {
+    let inputs = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
+
+    Ok(ExpandSources {
+        walker: state.walker(),
+    }
+    .execute(&inputs)
+    .into_iter()
+    .map(|path| path.to_string_lossy().into_owned())
+    .collect())
+}
+
+#[tauri::command]
+pub fn expand_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<Vec<String>, String> {
+    expand_paths_inner(&state, paths)
 }
 
 pub fn reorder_inner(
@@ -222,7 +246,9 @@ mod tests {
     use pdf_tools_core::application::errors::PdfError;
     use pdf_tools_core::domain::geometry::PageSize;
     use pdf_tools_core::domain::source::DocumentInfo;
-    use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
+    use pdf_tools_core::infrastructure::fake_engine::{
+        file, subdir, FakeDirectoryWalker, FakeImageDecoder, FakePdfEngine,
+    };
 
     use super::super::dto::{GroupingDto, SourceStatusDto};
     use super::*;
@@ -277,5 +303,52 @@ mod tests {
         assert!(snapshot.slots.is_empty());
         assert_eq!(snapshot.sources[0].status, SourceStatusDto::Encrypted);
         assert_eq!(snapshot.sources[0].grouping, GroupingDto::Grouped);
+    }
+
+    #[test]
+    fn expand_paths_flattens_a_folder_into_its_supported_files() {
+        let walker = FakeDirectoryWalker::new()
+            .with_dir(
+                "/scans",
+                vec![subdir("/scans/2024"), file("/scans/notes.txt")],
+            )
+            .with_dir(
+                "/scans/2024",
+                vec![
+                    file("/scans/2024/page10.pdf"),
+                    file("/scans/2024/page2.pdf"),
+                ],
+            );
+        let state = AppState::with_ports(
+            Arc::new(FakePdfEngine::new()),
+            Arc::new(FakeImageDecoder::new()),
+            Arc::new(walker),
+        );
+
+        let expanded = expand_paths_inner(&state, vec!["/scans".into()]).unwrap();
+
+        assert_eq!(
+            expanded,
+            vec![
+                "/scans/2024/page2.pdf".to_owned(),
+                "/scans/2024/page10.pdf".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn expand_paths_passes_plain_files_through_and_leaves_the_plan_alone() {
+        let state = AppState::with_ports(
+            Arc::new(FakePdfEngine::new()),
+            Arc::new(FakeImageDecoder::new()),
+            Arc::new(FakeDirectoryWalker::new()),
+        );
+
+        let expanded = expand_paths_inner(&state, vec!["/a/report.pdf".into()]).unwrap();
+
+        assert_eq!(expanded, vec!["/a/report.pdf".to_owned()]);
+        // Expanding is a question, not a change: nothing enters the document
+        // until `add_sources` is called with the answer.
+        assert!(state.session().plan().slots().is_empty());
     }
 }
