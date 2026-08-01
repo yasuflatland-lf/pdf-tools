@@ -13,13 +13,10 @@ import type { SourceFileDto } from "../bindings/SourceFileDto";
 import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
 import { nextFocusIndex, type ShortcutAction } from "../lib/keyboard";
-import { rasterizeSlot, reorder } from "../lib/tauri-api";
-import { createThumbnailCache, type ThumbnailCache } from "../lib/thumbnail-cache";
+import { reorder } from "../lib/tauri-api";
 import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
-
-const CACHE_CAPACITY = 100;
 
 export interface DisplayCard {
   key: string;
@@ -36,7 +33,6 @@ export interface DisplayCard {
 }
 
 export function usePageCards(): {
-  cache: ThumbnailCache;
   cards: DisplayCard[];
   handleDragEnd: (event: DragEndEvent) => Promise<void>;
   sensors: ReturnType<typeof useSensors>;
@@ -44,9 +40,6 @@ export function usePageCards(): {
   const slots = usePlanStore((state) => state.slots);
   const sources = usePlanStore((state) => state.sources);
   const expandedSources = useUiStore((state) => state.expandedSources);
-  const [cache] = useState(() =>
-    createThumbnailCache({ fetcher: rasterizeSlot, capacity: CACHE_CAPACITY }),
-  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -93,8 +86,6 @@ export function usePageCards(): {
     });
   }, [expandedSources, slots, sources]);
 
-  useEffect(() => () => cache.release(), [cache]);
-
   /**
    * The only place a drag touches the backend. While the pointer moves,
    * `rectSortingStrategy` shifts the cards with CSS transforms alone, so the
@@ -122,7 +113,7 @@ export function usePageCards(): {
     }
   };
 
-  return { cache, cards, handleDragEnd, sensors };
+  return { cards, handleDragEnd, sensors };
 }
 
 interface CardFocusOptions {

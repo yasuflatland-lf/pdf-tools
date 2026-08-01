@@ -1,7 +1,6 @@
 import { DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
-import { createContext, useContext, useRef, type ReactNode, type RefObject } from "react";
-import type { ThumbnailCache } from "../lib/thumbnail-cache";
+import { useRef, type ReactNode, type RefObject } from "react";
 import { useUiStore } from "../store/ui-store";
 import { SortableCard } from "./SortableCard";
 import { useCardFocus, useCardRows, usePageCards, type DisplayCard } from "./usePageCards";
@@ -15,16 +14,6 @@ interface CardSurfaceProps {
   thumbnailWidth: number;
 }
 
-const CardSurfaceCacheContext = createContext<ThumbnailCache | null>(null);
-
-export function useCardSurfaceCache(): ThumbnailCache {
-  const cache = useContext(CardSurfaceCacheContext);
-  if (!cache) {
-    throw new Error("useCardSurfaceCache must be used within CardSurface");
-  }
-  return cache;
-}
-
 export function CardSurface({
   columnCount,
   rowHeight,
@@ -36,7 +25,7 @@ export function CardSurface({
   const selectedSlots = useUiStore((state) => state.selectedSlots);
   const ownScrollRef = useRef<HTMLDivElement>(null);
   const containerRef = scrollRef ?? ownScrollRef;
-  const { cache, cards, handleDragEnd, sensors } = usePageCards();
+  const { cards, handleDragEnd, sensors } = usePageCards();
   const { rows, scrollToIndex, totalSize } = useCardRows({
     cards,
     columnCount,
@@ -46,58 +35,53 @@ export function CardSurface({
   const { focusedIndex, selectCard } = useCardFocus({ cards, columnCount, scrollToIndex });
 
   return (
-    <CardSurfaceCacheContext value={cache}>
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div
-          ref={containerRef}
-          className="h-full overflow-y-auto"
-          aria-label="Document pages"
-          data-view-mode={viewMode}
-          role="listbox"
-          aria-multiselectable="true"
-        >
-          <SortableContext items={cards.map((card) => card.key)} strategy={rectSortingStrategy}>
-            <div className="relative w-full" style={{ height: `${totalSize}px` }}>
-              {rows.map((row) => {
-                const rowCards = cards.slice(
-                  row.index * columnCount,
-                  (row.index + 1) * columnCount,
-                );
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto"
+        aria-label="Document pages"
+        data-view-mode={viewMode}
+        role="listbox"
+        aria-multiselectable="true"
+      >
+        <SortableContext items={cards.map((card) => card.key)} strategy={rectSortingStrategy}>
+          <div className="relative w-full" style={{ height: `${totalSize}px` }}>
+            {rows.map((row) => {
+              const rowCards = cards.slice(row.index * columnCount, (row.index + 1) * columnCount);
 
-                return (
-                  <div
-                    key={row.key}
-                    className="absolute top-0 left-0 grid w-full gap-4 pb-4"
-                    style={{
-                      gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-                      transform: `translateY(${row.start}px)`,
-                    }}
-                  >
-                    {rowCards.map((card, positionInRow) => {
-                      const cardIndex = row.index * columnCount + positionInRow;
-                      const selected = card.slotIds.every((slotId) => selectedSlots.has(slotId));
+              return (
+                <div
+                  key={row.key}
+                  className="absolute top-0 left-0 grid w-full gap-4 pb-4"
+                  style={{
+                    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                    transform: `translateY(${row.start}px)`,
+                  }}
+                >
+                  {rowCards.map((card, positionInRow) => {
+                    const cardIndex = row.index * columnCount + positionInRow;
+                    const selected = card.slotIds.every((slotId) => selectedSlots.has(slotId));
 
-                      return (
-                        <SortableCard
-                          key={card.key}
-                          id={card.key}
-                          label={card.fileName}
-                          rotation={card.slot.rotation}
-                          focused={focusedIndex === cardIndex}
-                          onSelect={(modifiers) => selectCard(cardIndex, modifiers)}
-                          selected={selected}
-                        >
-                          {renderCard(card, thumbnailWidth, selected)}
-                        </SortableCard>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </SortableContext>
-        </div>
-      </DndContext>
-    </CardSurfaceCacheContext>
+                    return (
+                      <SortableCard
+                        key={card.key}
+                        id={card.key}
+                        label={card.fileName}
+                        rotation={card.slot.rotation}
+                        focused={focusedIndex === cardIndex}
+                        onSelect={(modifiers) => selectCard(cardIndex, modifiers)}
+                        selected={selected}
+                      >
+                        {renderCard(card, thumbnailWidth, selected)}
+                      </SortableCard>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </SortableContext>
+      </div>
+    </DndContext>
   );
 }

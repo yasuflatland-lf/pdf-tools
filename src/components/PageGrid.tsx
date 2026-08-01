@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useUiStore } from "../store/ui-store";
 import { usePlanStore } from "../store/plan-store";
-import { CardSurface, useCardSurfaceCache } from "./CardSurface";
+import { CardSurface } from "./CardSurface";
 import { GroupCard } from "./GroupCard";
+import { useThumbnailCache } from "./card/ThumbnailCacheProvider";
 import type { DisplayCard } from "./usePageCards";
 
 const CARD_MIN_WIDTH = 180;
@@ -49,7 +50,7 @@ interface PageGridCardProps {
 }
 
 function PageGridCard({ card, selected, thumbnailWidth }: PageGridCardProps) {
-  const cache = useCardSurfaceCache();
+  const cache = useThumbnailCache();
 
   return (
     <GroupCard

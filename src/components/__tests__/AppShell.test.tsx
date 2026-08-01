@@ -134,6 +134,35 @@ describe("AppShell", () => {
     expect(container.querySelector('[data-view-mode="grid"]')).not.toBeNull();
   });
 
+  it("switching_the_view_does_not_refetch_a_cached_thumbnail", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
+      sources: [
+        {
+          id: 10,
+          path: "/documents/report.pdf",
+          file_name: "report.pdf",
+          kind: "pdf",
+          grouping: "ungrouped",
+          page_count: 1,
+          status: { kind: "ready" },
+        },
+      ],
+      can_undo: false,
+      can_redo: false,
+    });
+    const container = await renderShell();
+
+    await click(getButton(container, "List view"));
+    await click(getButton(container, "Grid view"));
+
+    const gridRasterizations = invoke.mock.calls.filter(
+      ([command, args]) =>
+        command === "rasterize_slot" && (args as { width: number }).width === 360,
+    );
+    expect(gridRasterizations).toHaveLength(1);
+  });
+
   it("keeps the empty-state prompt in either view", async () => {
     useUiStore.setState({ viewMode: "list" });
 
