@@ -114,7 +114,7 @@ describe("App", () => {
   });
 
   it("shows a source returned after a file is dropped", async () => {
-    invoke.mockResolvedValue({
+    const snapshot = {
       slots: [
         { id: 1, source: 10, page: 0, rotation: 0 },
         { id: 2, source: 10, page: 1, rotation: 0 },
@@ -130,7 +130,12 @@ describe("App", () => {
           status: { kind: "ready" },
         },
       ],
-    });
+    };
+    invoke.mockImplementation((command: string, args: { paths?: string[] }) =>
+      // `expand_paths` echoes its input, so the drop reaches `add_sources`
+      // with exactly the paths the user dropped.
+      Promise.resolve(command === "expand_paths" ? (args.paths ?? []) : snapshot),
+    );
     const container = await renderApp();
 
     await act(async () => {

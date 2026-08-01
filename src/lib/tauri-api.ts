@@ -8,6 +8,15 @@ export async function addSources(paths: string[]): Promise<PlanSnapshot> {
   return invoke<PlanSnapshot>("add_sources", { paths });
 }
 
+/**
+ * Resolves folders to the files inside them and passes everything else
+ * through. Separate from `addSources` so the count can be seen, and asked
+ * about, before anything enters the plan.
+ */
+export async function expandPaths(paths: string[]): Promise<string[]> {
+  return invoke<string[]>("expand_paths", { paths });
+}
+
 export async function rasterizeSlot(slotId: number, width: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("rasterize_slot", { slotId, width });
 }

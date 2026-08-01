@@ -15,6 +15,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({ onDragDropEvent }),
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn(), open: vi.fn() }));
 vi.mock("../../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tauri-api")>()),
   removeSlots,
@@ -94,7 +95,7 @@ describe("AppShell", () => {
     });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     localStorage.clear();
-    useUiStore.setState({ viewMode: "grid" });
+    useUiStore.setState({ viewMode: "grid", sourceNotice: null, isIngesting: false });
   });
 
   afterEach(async () => {
@@ -107,7 +108,7 @@ describe("AppShell", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid" });
+    useUiStore.setState({ viewMode: "grid", sourceNotice: null, isIngesting: false });
     vi.restoreAllMocks();
   });
 
@@ -150,5 +151,28 @@ describe("AppShell", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(removeSlots).not.toHaveBeenCalled();
+  });
+
+  it("shows the source notice above the document and dismisses it", async () => {
+    useUiStore.getState().setSourceNotice('No PDFs or images found in "Scans".');
+    const container = await renderShell();
+
+    expect(container.textContent).toContain('No PDFs or images found in "Scans".');
+
+    await click(getButton(container, "Dismiss"));
+
+    expect(useUiStore.getState().sourceNotice).toBeNull();
+    expect(container.textContent).not.toContain('No PDFs or images found in "Scans".');
+  });
+
+  it("keeps the notice visible once the document has pages", async () => {
+    loadPages();
+    useUiStore.getState().setSourceNotice("No PDFs or images found in the selected folders.");
+    const container = await renderShell();
+
+    // The empty state is gone here, so a notice rendered inside it would have
+    // nowhere to appear -- which is why it lives above the document instead.
+    expect(container.textContent).not.toContain("Drop PDFs or images here");
+    expect(container.textContent).toContain("No PDFs or images found in the selected folders.");
   });
 });

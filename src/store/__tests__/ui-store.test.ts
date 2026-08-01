@@ -13,7 +13,11 @@ describe("createUiStore", () => {
       selectedSlots: new Set(),
       viewMode: "grid",
       modalOpen: false,
+      sourceNotice: null,
+      isIngesting: false,
       setModalOpen: expect.any(Function),
+      setSourceNotice: expect.any(Function),
+      setIngesting: expect.any(Function),
       setViewMode: expect.any(Function),
       toggleExpanded: expect.any(Function),
       pruneExpanded: expect.any(Function),
@@ -120,5 +124,29 @@ describe("createUiStore", () => {
     expect(store.getState().modalOpen).toBe(true);
     store.getState().setModalOpen(false);
     expect(store.getState().modalOpen).toBe(false);
+  });
+
+  it("holds a source notice until it is replaced or cleared", () => {
+    const store = createUiStore();
+
+    expect(store.getState().sourceNotice).toBeNull();
+
+    store.getState().setSourceNotice('No PDFs or images found in "Scans".');
+    expect(store.getState().sourceNotice).toBe('No PDFs or images found in "Scans".');
+
+    store.getState().setSourceNotice(null);
+    expect(store.getState().sourceNotice).toBeNull();
+  });
+
+  it("tracks whether an add is in flight", () => {
+    const store = createUiStore();
+
+    expect(store.getState().isIngesting).toBe(false);
+
+    store.getState().setIngesting(true);
+    expect(store.getState().isIngesting).toBe(true);
+
+    store.getState().setIngesting(false);
+    expect(store.getState().isIngesting).toBe(false);
   });
 });
