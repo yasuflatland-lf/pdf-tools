@@ -11,24 +11,40 @@ pub enum SourceKind {
 }
 
 impl SourceKind {
+    const PDF_EXTENSIONS: [&'static str; 1] = ["pdf"];
+    const IMAGE_EXTENSIONS: [&'static str; 4] = ["jpg", "jpeg", "png", "gif"];
+
     /// Classifies a path by its extension, case-insensitively. Returns `None`
     /// for anything this app does not merge, so a caller can skip such a path
-    /// without a special case. Both adding files and expanding a folder ask
-    /// this question, and they must not be able to disagree.
+    /// without a special case. Adding files, expanding a folder, decoding an
+    /// image and filtering the picker all ask this question here, and so they
+    /// cannot disagree.
     pub fn from_extension(path: &Path) -> Option<Self> {
         let extension = path.extension()?.to_str()?;
 
-        if extension.eq_ignore_ascii_case("pdf") {
+        if matches(&Self::PDF_EXTENSIONS, extension) {
             Some(Self::Pdf)
-        } else if ["jpg", "jpeg", "png", "gif"]
-            .iter()
-            .any(|candidate| extension.eq_ignore_ascii_case(candidate))
-        {
+        } else if matches(&Self::IMAGE_EXTENSIONS, extension) {
             Some(Self::Image)
         } else {
             None
         }
     }
+
+    /// Every extension this app merges, for a file picker's filter.
+    pub fn supported_extensions() -> Vec<&'static str> {
+        Self::PDF_EXTENSIONS
+            .iter()
+            .chain(Self::IMAGE_EXTENSIONS.iter())
+            .copied()
+            .collect()
+    }
+}
+
+fn matches(candidates: &[&str], extension: &str) -> bool {
+    candidates
+        .iter()
+        .any(|candidate| extension.eq_ignore_ascii_case(candidate))
 }
 
 /// Why a source file could not be read.
@@ -123,5 +139,13 @@ mod tests {
                 "{name} should not classify"
             );
         }
+    }
+
+    #[test]
+    fn supported_extensions_lists_every_mergeable_format() {
+        assert_eq!(
+            SourceKind::supported_extensions(),
+            ["pdf", "jpg", "jpeg", "png", "gif"]
+        );
     }
 }

@@ -11,8 +11,8 @@ use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
-    add_sources_inner, compose_inner, rasterize_slot_inner, redo_inner, remove_slots_inner,
-    reorder_inner, rotate_slots_inner, undo_inner,
+    add_sources_inner, compose_inner, expand_paths_inner, rasterize_slot_inner, redo_inner,
+    remove_slots_inner, reorder_inner, rotate_slots_inner, supported_extensions_inner, undo_inner,
 };
 use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
@@ -325,6 +325,26 @@ fn add_sources_returns_a_snapshot_containing_the_new_slots() {
 
     assert_eq!(snapshot.slots.len(), 3);
     assert_eq!(snapshot.sources[0].kind, SourceKindDto::Pdf);
+}
+
+#[test]
+fn supported_extensions_returns_every_mergeable_format() {
+    assert_eq!(
+        supported_extensions_inner(),
+        ["pdf", "jpg", "jpeg", "png", "gif"]
+    );
+}
+
+#[test]
+fn expand_paths_drops_an_unsupported_file() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new()),
+        Arc::new(FakeImageDecoder::new()),
+    );
+
+    let expanded = expand_paths_inner(&state, vec!["/a/notes.txt".into()]).unwrap();
+
+    assert!(expanded.is_empty());
 }
 
 #[test]

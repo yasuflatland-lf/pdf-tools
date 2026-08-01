@@ -32,9 +32,10 @@ pub fn add_sources(state: State<'_, AppState>, paths: Vec<String>) -> Result<Pla
 /// The body of the `expand_paths` command, kept free of Tauri's `State`
 /// wrapper so it can be exercised in tests without starting a webview.
 ///
-/// Resolves folders to the files inside them and leaves everything else alone.
-/// It is deliberately separate from `add_sources`: the frontend has to be able
-/// to see the count, and ask about it, before anything enters the plan.
+/// Resolves folders to the supported files inside them and drops unsupported
+/// direct inputs. It is deliberately separate from `add_sources`: the frontend
+/// has to be able to see the count, and ask about it, before anything enters the
+/// plan.
 pub fn expand_paths_inner(state: &AppState, paths: Vec<String>) -> Result<Vec<String>, String> {
     let inputs = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
 
@@ -50,6 +51,20 @@ pub fn expand_paths_inner(state: &AppState, paths: Vec<String>) -> Result<Vec<St
 #[tauri::command]
 pub fn expand_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<Vec<String>, String> {
     expand_paths_inner(&state, paths)
+}
+
+/// The extensions the picker offers, taken from the domain so the filter can
+/// never advertise something the app would then refuse to merge.
+pub fn supported_extensions_inner() -> Vec<String> {
+    SourceKind::supported_extensions()
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[tauri::command]
+pub fn supported_extensions() -> Vec<String> {
+    supported_extensions_inner()
 }
 
 pub fn reorder_inner(

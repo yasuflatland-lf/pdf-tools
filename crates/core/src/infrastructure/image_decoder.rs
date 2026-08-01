@@ -7,6 +7,7 @@ use crate::application::errors::ImageError;
 use crate::application::ports::ImageDecoder;
 use crate::domain::geometry::RasterImage;
 use crate::domain::source::ImageInfo;
+use crate::domain::source::SourceKind;
 
 pub struct ImageCrateDecoder;
 
@@ -88,16 +89,7 @@ fn validate_source(src: &Path) -> Result<(), ImageError> {
         Ok(true) => {}
     }
 
-    let supported = src
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            ["jpg", "jpeg", "png", "gif"]
-                .iter()
-                .any(|supported| extension.eq_ignore_ascii_case(supported))
-        });
-
-    if supported {
+    if SourceKind::from_extension(src) == Some(SourceKind::Image) {
         Ok(())
     } else {
         Err(ImageError::UnsupportedFormat {

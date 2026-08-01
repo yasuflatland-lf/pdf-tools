@@ -18,7 +18,9 @@ impl ExpandSources<'_> {
     /// tree -- the same rule `AddSources` follows for one unreadable file.
     ///
     /// Inputs keep their order relative to one another; the files found inside
-    /// a folder are ordered naturally within that folder's subtree.
+    /// a folder are ordered naturally within that folder's subtree. Unsupported
+    /// files are dropped here so the caller can see that nothing came back and
+    /// say so.
     pub fn execute(&self, inputs: &[PathBuf]) -> Vec<PathBuf> {
         let mut result = Vec::new();
         let mut seen = HashSet::new();
@@ -30,7 +32,7 @@ impl ExpandSources<'_> {
                         result.push(path);
                     }
                 }
-            } else if seen.insert(input.clone()) {
+            } else if SourceKind::from_extension(input).is_some() && seen.insert(input.clone()) {
                 result.push(input.clone());
             }
         }
@@ -231,15 +233,14 @@ mod tests {
     }
 
     #[test]
-    fn inputs_that_are_not_directories_pass_through_untouched() {
-        // Including unsupported ones: deciding what to do with a lone .txt is
-        // `AddSources`'s job, and it already records or skips it.
+    fn direct_inputs_are_filtered_to_supported_files() {
         let walker = FakeDirectoryWalker::new();
 
         assert_eq!(
             expand(&walker, &["/a/report.pdf", "/a/notes.txt"]),
-            ["/a/report.pdf", "/a/notes.txt"]
+            ["/a/report.pdf"]
         );
+        assert!(expand(&walker, &["/a/notes.txt"]).is_empty());
     }
 
     #[test]
