@@ -205,6 +205,14 @@ describe("PageList", () => {
     expect(container.querySelector('[aria-label="Expand 10.pdf"]')).not.toBeNull();
   });
 
+  it("renders no rotate control", async () => {
+    load(source(10, "ungrouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.querySelector('[aria-label^="Rotate "]')).toBeNull();
+  });
+
   it("a_selected_row_is_marked_as_selected", async () => {
     load(source(10, "ungrouped", 2), 2);
     useUiStore.setState({ selectedSlots: new Set([1]) });

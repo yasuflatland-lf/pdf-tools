@@ -1,12 +1,10 @@
-import type { ComponentProps } from "react";
+import type { CardViewProps } from "./card/CardProps";
 import { ToggleButton } from "./card/ToggleButton";
 import { PageCard } from "./PageCard";
 
-type GroupCardProps = ComponentProps<typeof PageCard> & {
-  onToggle?: () => void;
-};
+type Props = CardViewProps;
 
-export function GroupCard({ onToggle, ...pageCardProps }: GroupCardProps) {
+export function GroupCard({ onToggle, ...pageCardProps }: Props) {
   const { collapsed, fileName } = pageCardProps;
 
   return (

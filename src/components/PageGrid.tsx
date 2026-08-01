@@ -1,10 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { useUiStore } from "../store/ui-store";
-import { usePlanStore } from "../store/plan-store";
 import { CardSurface } from "./CardSurface";
 import { GroupCard } from "./GroupCard";
 import { useThumbnailCache } from "./card/ThumbnailCacheProvider";
-import type { DisplayCard } from "./usePageCards";
+import { toCardViewProps } from "./card/toCardViewProps";
 
 const CARD_MIN_WIDTH = 180;
 const GAP = 16;
@@ -18,6 +16,7 @@ function getColumnCount(width: number): number {
 export function PageGrid() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
+  const cache = useThumbnailCache();
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -35,43 +34,10 @@ export function PageGrid() {
       rowHeight={ROW_HEIGHT}
       viewMode="grid"
       renderCard={(card, thumbnailWidth, selected) => (
-        <PageGridCard card={card} selected={selected} thumbnailWidth={thumbnailWidth} />
+        <GroupCard {...toCardViewProps(card, cache, thumbnailWidth, selected)} />
       )}
       scrollRef={scrollRef}
       thumbnailWidth={THUMBNAIL_WIDTH}
-    />
-  );
-}
-
-interface PageGridCardProps {
-  card: DisplayCard;
-  selected: boolean;
-  thumbnailWidth: number;
-}
-
-function PageGridCard({ card, selected, thumbnailWidth }: PageGridCardProps) {
-  const cache = useThumbnailCache();
-
-  return (
-    <GroupCard
-      cache={cache}
-      collapsed={card.collapsed}
-      fileName={card.fileName}
-      onToggle={
-        card.collapsible ? () => useUiStore.getState().toggleExpanded(card.slot.source) : undefined
-      }
-      pageCount={card.pageCount}
-      pageNumber={card.slot.page + 1}
-      rotation={card.slot.rotation}
-      slotId={card.slot.id}
-      thumbnailWidth={thumbnailWidth}
-      onRotate={(delta) => {
-        void usePlanStore
-          .getState()
-          .rotate(card.slotIds, delta)
-          .catch((error: unknown) => console.error("rotate failed", error));
-      }}
-      selected={selected}
     />
   );
 }

@@ -1,21 +1,10 @@
 import { countLabel } from "../lib/format";
-import type { ThumbnailCache } from "../lib/thumbnail-cache";
+import type { CardViewProps } from "./card/CardProps";
 import { Notice } from "./card/Notice";
 import { ThumbnailFrame } from "./card/ThumbnailFrame";
 import { ToggleButton } from "./card/ToggleButton";
 
-interface PageListRowProps {
-  cache: ThumbnailCache;
-  collapsed: boolean;
-  fileName: string;
-  onToggle?: () => void;
-  pageCount: number;
-  pageNumber: number;
-  rotation: number;
-  selected?: boolean;
-  slotId: number;
-  thumbnailWidth: number;
-}
+type Props = CardViewProps;
 
 export function PageListRow({
   cache,
@@ -25,10 +14,11 @@ export function PageListRow({
   pageCount,
   pageNumber,
   rotation,
+  onRotate: _onRotate, // List view has no room for the grid's hover controls.
   selected,
   slotId,
   thumbnailWidth,
-}: PageListRowProps) {
+}: Props) {
   const [thumbnail, failed] = ThumbnailFrame({
     cache,
     fileName,
