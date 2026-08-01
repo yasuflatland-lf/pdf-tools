@@ -58,7 +58,7 @@ describe("useSnapshotSync", () => {
     document.body.replaceChildren();
   });
 
-  it("collapses an expanded source removed by an undo snapshot", async () => {
+  it("forgets an expanded source that has left the document", async () => {
     usePlanStore.setState({ sources: [source(10, "grouped")] });
     useUiStore.getState().toggleExpanded(10);
     await mountSync();
@@ -91,7 +91,7 @@ describe("useSnapshotSync", () => {
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
   });
 
-  it("re-collapses a source that is grouped again after being ungrouped", async () => {
+  it("keeps an expanded source expanded through a temporary ungrouping", async () => {
     usePlanStore.setState({ sources: [source(10, "grouped")] });
     useUiStore.getState().toggleExpanded(10);
     await mountSync();
@@ -104,7 +104,7 @@ describe("useSnapshotSync", () => {
         can_redo: false,
       });
     });
-    expect(useUiStore.getState().expandedSources.size).toBe(0);
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(true);
 
     act(() => {
       usePlanStore.getState().setSnapshot({
@@ -115,7 +115,7 @@ describe("useSnapshotSync", () => {
       });
     });
 
-    expect(useUiStore.getState().expandedSources.has(10)).toBe(false);
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(true);
   });
 
   it("renders the snapshot and pruned UI state in one consistent pass", async () => {
