@@ -42,6 +42,13 @@ The script writes `architecture.png` next to itself. Re-run it after every chang
   [simple-archiver](https://github.com/yasuflatland-lf/simple-archiver), so the two diagrams
   render the same artwork at the same size.
 
+- `pdf.png` marks the merged output. It was rasterized from a PDF file icon downloaded from
+  [SVG Repo](https://www.svgrepo.com/):
+
+  ```bash
+  rsvg-convert -w 512 -h 512 -a pdf-file-svgrepo-com.svg -o icons/pdf.png
+  ```
+
 The Rust logo is not staged here — it ships with the `diagrams` library as
 `diagrams.programming.language.Rust`.
 

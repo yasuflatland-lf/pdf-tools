@@ -30,7 +30,6 @@ What is shown (matches docs/architecture.md):
 
 from diagrams import Cluster, Diagram, Edge
 from diagrams.custom import Custom
-from diagrams.generic.storage import Storage
 from diagrams.onprem.client import Users
 from diagrams.programming.flowchart import Document, PredefinedProcess
 from diagrams.programming.language import Rust
@@ -41,6 +40,7 @@ from diagrams.programming.language import Rust
 ICON_LOGO = "icons/logo.png"
 ICON_APPLE = "icons/apple.png"
 ICON_WINDOWS = "icons/windows.png"
+ICON_PDF = "icons/pdf.png"
 
 graph_attr = {
     "fontsize": "18",
@@ -69,7 +69,9 @@ with Diagram(
     # Output sink on the local filesystem; all three paths converge here.
     # The label is broken across three lines rather than two: this node sits
     # at the right edge of the drawing, and a wider caption is clipped there.
-    out = Storage("merged.pdf\n(one file ·\npage order = plan order)")
+    out = Custom(
+        "merged.pdf\n(one file ·\npage order = plan order)", ICON_PDF
+    )
 
     # Pure Rust core crate: the engine plus the three compose paths.
     with Cluster("pdf-tools-core (Rust crate)"):
