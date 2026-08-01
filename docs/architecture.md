@@ -187,16 +187,16 @@ pinning that a panic while the session is locked does not lose the document — 
 
 Every plan command returns a fresh `PlanSnapshot`.
 
-| Command                          | Semantics                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------- |
-| `add_sources(paths)`             | Probe each file, append its slots to the end of the plan                        |
-| `expand_paths(paths)`            | Resolve folders to the supported files inside them (does **not** return a plan) |
-| `reorder(from, to)`              | Move a contiguous range, then re-evaluate regrouping                            |
-| `remove_slots(slot_ids)`         | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping |
-| `rotate_slots(slot_ids, delta)`  | Turn surviving slots clockwise modulo four, then re-evaluate regrouping         |
-| `undo()` / `redo()`              | Move along the plan stack                                                       |
-| `rasterize_slot(slot_id, width)` | Render one slot to PNG (does **not** return a plan)                             |
-| `compose(dest)`                  | Run the merge; progress arrives as `compose-progress` events                    |
+| Command                             | Semantics                                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `add_sources(paths)`                | Probe each file, append its slots to the end of the plan                                                |
+| `expand_paths(paths)`               | Resolve folders to the supported files inside them (does **not** return a plan)                         |
+| `reorder(from_start, from_end, to)` | Move a contiguous range; `to` indexes the sequence remaining after `from_start..from_end` is lifted out |
+| `remove_slots(slot_ids)`            | Delete slots, drop sources that lost all of theirs, then re-evaluate regrouping                         |
+| `rotate_slots(slot_ids, delta)`     | Turn surviving slots clockwise modulo four, then re-evaluate regrouping                                 |
+| `undo()` / `redo()`                 | Move along the plan stack                                                                               |
+| `rasterize_slot(slot_id, width)`    | Render one slot to PNG (does **not** return a plan)                                                     |
+| `compose(dest)`                     | Run the merge; progress arrives as `compose-progress` events                                            |
 
 Two shapes are deliberate:
 

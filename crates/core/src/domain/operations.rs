@@ -28,7 +28,7 @@ pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan {
 
 /// Turns the named slots, leaving every other slot untouched. Unknown ids are
 /// ignored, like every other operation over slot ids.
-pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan {
+pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i32) -> MergePlan {
     MergePlan::new(
         plan.slots()
             .iter()
@@ -118,6 +118,15 @@ mod tests {
         assert_eq!(plan.slots()[0].rotation, Rotation::default());
         assert_eq!(new.slots()[0].rotation.quarter_turns(), 1);
         assert_eq!(new.slots()[1].rotation, Rotation::default());
+    }
+
+    #[test]
+    fn rotate_accepts_a_negative_delta() {
+        let plan = plan_of(&[1]);
+        let negative = rotate(&plan, &[SlotId(1)], -1);
+
+        assert_eq!(negative.slots()[0].rotation.quarter_turns(), 3);
+        assert_eq!(negative, rotate(&plan, &[SlotId(1)], 3));
     }
 
     #[test]

@@ -94,7 +94,6 @@ pub fn rotate_slots_inner(
     delta: i32,
 ) -> Result<PlanSnapshot, String> {
     let slot_ids = slot_ids.into_iter().map(SlotId).collect::<Vec<_>>();
-    let delta = delta.rem_euclid(4) as i8;
     let mut session = state.session();
     session.rotate(&slot_ids, delta);
     Ok(PlanSnapshot::from_session(&session))
