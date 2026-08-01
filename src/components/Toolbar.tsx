@@ -97,6 +97,9 @@ export function Toolbar() {
 
   return (
     <div className="relative flex h-12 items-center border-b border-slate-800 bg-slate-900/80 px-3.5 text-xs text-slate-400">
+      {/* The same file the favicon and the bundle icons are generated from. */}
+      <img alt="PDF Tools" className="mr-2.5 size-5" src="/logo.svg" />
+
       <span>
         <span>{countLabel(fileCount, "file")}</span>
         <span aria-hidden="true" className="px-1.5 text-slate-600">

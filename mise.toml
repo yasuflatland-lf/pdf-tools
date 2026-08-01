@@ -24,6 +24,14 @@ run = ["cargo fmt --all --check", "pnpm oxfmt --check"]
 description = "Run all tests"
 run = ["cargo nextest run --workspace", "pnpm vitest run"]
 
+[tasks.gen-icons]
+description = "Regenerate the bundle icons from public/logo.svg"
+run = [
+  "pnpm tauri icon public/logo.svg",
+  # The app ships to macOS and Windows only, so the mobile sets are dead weight.
+  "rm -rf src-tauri/icons/android src-tauri/icons/ios",
+]
+
 [tasks.fetch-pdfium]
 description = "Download and verify the pinned PDFium binary"
 run = "./scripts/fetch-pdfium.sh"

@@ -221,6 +221,14 @@ describe("Toolbar", () => {
     consoleError.mockRestore();
   }
 
+  it("heads the toolbar with the application logo", async () => {
+    const container = await renderToolbar();
+    const logo = container.querySelector("img");
+
+    expect(logo?.getAttribute("src")).toBe("/logo.svg");
+    expect(logo?.getAttribute("alt")).toBe("PDF Tools");
+  });
+
   it("switches between grid and list views and reports the active mode", async () => {
     const container = await renderToolbar();
     const grid = getButton(container, "Grid view");
