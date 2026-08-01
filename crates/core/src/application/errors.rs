@@ -27,3 +27,11 @@ pub enum ImageError {
     #[error("failed to encode the image: {reason}")]
     EncodeFailed { reason: String },
 }
+
+#[derive(Debug, Clone, thiserror::Error, PartialEq)]
+pub enum WalkError {
+    #[error("failed to list the directory at {path}: {reason}")]
+    Unreadable { path: PathBuf, reason: String },
+    #[error("the directory is no longer present: {path}")]
+    Missing { path: PathBuf },
+}

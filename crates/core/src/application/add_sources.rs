@@ -27,7 +27,7 @@ impl AddSources<'_> {
         let mut new_slots = Vec::new();
 
         for path in paths {
-            let Some(kind) = source_kind(path) else {
+            let Some(kind) = SourceKind::from_extension(path) else {
                 continue;
             };
             let source_id = ids.next_source();
@@ -159,21 +159,6 @@ fn unreadable_source(
         page_count: 0,
         page_sizes: Vec::new(),
         status: SourceStatus::Unreadable(reason),
-    }
-}
-
-fn source_kind(path: &Path) -> Option<SourceKind> {
-    let extension = path.extension()?.to_str()?;
-
-    if extension.eq_ignore_ascii_case("pdf") {
-        Some(SourceKind::Pdf)
-    } else if ["jpg", "jpeg", "png", "gif"]
-        .iter()
-        .any(|candidate| extension.eq_ignore_ascii_case(candidate))
-    {
-        Some(SourceKind::Image)
-    } else {
-        None
     }
 }
 

@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::application::errors::{ImageError, PdfError};
-use crate::application::ports::{ComposePlan, ImageDecoder, MergeReport, PdfEngine};
+use crate::application::errors::{ImageError, PdfError, WalkError};
+use crate::application::ports::{
+    ComposePlan, DirectoryWalker, ImageDecoder, MergeReport, PdfEngine, WalkEntry,
+};
 use crate::domain::geometry::{RasterImage, RasterSpec};
 use crate::domain::ids::PageIndex;
 use crate::domain::source::{DocumentInfo, ImageInfo};
@@ -148,6 +150,70 @@ impl ImageDecoder for FakeImageDecoder {
     }
 }
 
+/// A file entry, for building `FakeDirectoryWalker` trees readably.
+pub fn file(path: impl Into<PathBuf>) -> WalkEntry {
+    WalkEntry {
+        path: path.into(),
+        is_dir: false,
+    }
+}
+
+/// A directory entry the walk is allowed to descend into.
+pub fn subdir(path: impl Into<PathBuf>) -> WalkEntry {
+    WalkEntry {
+        path: path.into(),
+        is_dir: true,
+    }
+}
+
+/// An in-memory directory tree.
+///
+/// A path is a directory exactly when it has been registered, whether with
+/// contents or with a failure. Registering a path with `with_dir` while also
+/// listing it as a `file(...)` entry of its parent is how a symlinked
+/// directory is modelled: reachable, listable, but never descended into.
+pub struct FakeDirectoryWalker {
+    directories: HashMap<PathBuf, Result<Vec<WalkEntry>, WalkError>>,
+}
+
+impl FakeDirectoryWalker {
+    pub fn new() -> Self {
+        Self {
+            directories: HashMap::new(),
+        }
+    }
+
+    pub fn with_dir(mut self, dir: impl Into<PathBuf>, entries: Vec<WalkEntry>) -> Self {
+        self.directories.insert(dir.into(), Ok(entries));
+        self
+    }
+
+    pub fn with_failure(mut self, dir: impl Into<PathBuf>, err: WalkError) -> Self {
+        self.directories.insert(dir.into(), Err(err));
+        self
+    }
+}
+
+impl Default for FakeDirectoryWalker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DirectoryWalker for FakeDirectoryWalker {
+    fn is_dir(&self, path: &Path) -> bool {
+        self.directories.contains_key(path)
+    }
+
+    fn read_dir(&self, dir: &Path) -> Result<Vec<WalkEntry>, WalkError> {
+        self.directories.get(dir).cloned().unwrap_or_else(|| {
+            Err(WalkError::Missing {
+                path: dir.to_path_buf(),
+            })
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -247,6 +313,48 @@ mod tests {
         assert!(matches!(
             decoder.probe(Path::new("/broken.png")).unwrap_err(),
             ImageError::UnsupportedFormat { .. }
+        ));
+    }
+
+    #[test]
+    fn the_fake_walker_lists_a_registered_directory() {
+        let walker = FakeDirectoryWalker::new()
+            .with_dir("/scans", vec![file("/scans/a.pdf"), subdir("/scans/2024")]);
+
+        assert!(walker.is_dir(Path::new("/scans")));
+        assert_eq!(
+            walker.read_dir(Path::new("/scans")).unwrap(),
+            vec![file("/scans/a.pdf"), subdir("/scans/2024")]
+        );
+    }
+
+    #[test]
+    fn the_fake_walker_reports_missing_for_unregistered_directories() {
+        let walker = FakeDirectoryWalker::new();
+
+        assert!(!walker.is_dir(Path::new("/nope")));
+        assert!(matches!(
+            walker.read_dir(Path::new("/nope")).unwrap_err(),
+            WalkError::Missing { .. }
+        ));
+    }
+
+    #[test]
+    fn the_fake_walker_returns_registered_failures_verbatim() {
+        let walker = FakeDirectoryWalker::new().with_failure(
+            "/locked",
+            WalkError::Unreadable {
+                path: "/locked".into(),
+                reason: "permission denied".into(),
+            },
+        );
+
+        // A registered failure still counts as a directory: the walk has to be
+        // able to reach it before it can fail to list it.
+        assert!(walker.is_dir(Path::new("/locked")));
+        assert!(matches!(
+            walker.read_dir(Path::new("/locked")).unwrap_err(),
+            WalkError::Unreadable { .. }
         ));
     }
 }
