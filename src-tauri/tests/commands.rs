@@ -255,6 +255,19 @@ fn rotate_slots_returns_a_snapshot_carrying_the_new_rotation() {
 }
 
 #[test]
+fn rotate_slots_accepts_a_negative_delta() {
+    let state = state_with_pdf(1);
+    let slot_id = snapshot_of(&state).slots[0].id;
+
+    let negative = rotate_slots_inner(&state, vec![slot_id], -1).unwrap();
+    assert_eq!(negative.slots[0].rotation, 3);
+
+    undo_inner(&state).unwrap();
+    let positive = rotate_slots_inner(&state, vec![slot_id], 3).unwrap();
+    assert_eq!(negative, positive);
+}
+
+#[test]
 fn a_no_op_rotation_leaves_can_undo_unchanged() {
     let state = AppState::with_engines(
         Arc::new(FakePdfEngine::new()),

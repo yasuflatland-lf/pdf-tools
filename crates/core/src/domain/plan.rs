@@ -12,8 +12,8 @@ impl Rotation {
     }
 
     /// Returns this position after the given number of quarter turns.
-    pub fn turned(self, delta: i8) -> Self {
-        Self::from_quarter_turns(i32::from(self.0) + i32::from(delta))
+    pub fn turned(self, delta: i32) -> Self {
+        Self::from_quarter_turns(i32::from(self.0) + delta)
     }
 
     /// Returns the clockwise quarter-turn count in `0..4`.
@@ -58,11 +58,6 @@ impl MergePlan {
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
-
-    /// Returns the position of a slot identifier in the plan.
-    pub fn position_of(&self, id: SlotId) -> Option<usize> {
-        self.slots.iter().position(|slot| slot.id == id)
-    }
 }
 
 #[cfg(test)]
@@ -89,13 +84,6 @@ mod tests {
     fn raw_quarter_turn_counts_are_normalized() {
         assert_eq!(Rotation::from_quarter_turns(-5).quarter_turns(), 3);
         assert_eq!(Rotation::from_quarter_turns(10).quarter_turns(), 2);
-    }
-
-    #[test]
-    fn position_of_finds_a_slot_by_id() {
-        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 1)]);
-        assert_eq!(plan.position_of(SlotId(2)), Some(1));
-        assert_eq!(plan.position_of(SlotId(99)), None);
     }
 
     #[test]

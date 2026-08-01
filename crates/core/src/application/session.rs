@@ -82,7 +82,7 @@ impl PlanSession {
         self.finish_change();
     }
 
-    pub fn rotate(&mut self, ids: &[SlotId], delta: i8) {
+    pub fn rotate(&mut self, ids: &[SlotId], delta: i32) {
         self.begin_change();
         let plan = operations::rotate(self.document.plan(), ids, delta);
         self.document = self.document.with_plan(plan);
