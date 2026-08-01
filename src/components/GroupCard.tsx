@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { ToggleButton } from "./card/ToggleButton";
 import { PageCard } from "./PageCard";
 
 type GroupCardProps = ComponentProps<typeof PageCard> & {
@@ -17,31 +18,17 @@ export function GroupCard({ onToggle, ...pageCardProps }: GroupCardProps) {
     // toggle at all.
     <div className="group relative">
       <PageCard {...pageCardProps} />
-      {onToggle &&
-        (collapsed ? (
-          // A badge rather than a blanket over the preview: the preview is most
-          // of the card, and a control covering it would take every click meant
-          // to select the card -- including the Shift-click that ends a range.
-          <button
-            aria-label={`Expand ${fileName}`}
-            className="absolute top-2 left-2 rounded-md border border-slate-600 bg-slate-900/90 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Expand
-          </button>
-        ) : (
-          <button
-            aria-label={`Collapse ${fileName}`}
-            className="absolute top-2 left-2 rounded-md border border-slate-600 bg-slate-900/90 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Collapse
-          </button>
-        ))}
+      {onToggle && (
+        // A badge rather than a blanket over the preview: the preview is most
+        // of the card, and a control covering it would take every click meant
+        // to select the card -- including the Shift-click that ends a range.
+        <ToggleButton
+          collapsed={collapsed}
+          fileName={fileName}
+          onToggle={onToggle}
+          className="absolute top-2 left-2"
+        />
+      )}
     </div>
   );
 }

@@ -4,8 +4,8 @@ import type { SourceStatusDto } from "../bindings/SourceStatusDto";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { countLabel } from "../lib/format";
 import { ErrorBadge } from "./ErrorBadge";
-import { RotatedThumbnail } from "./RotatedThumbnail";
-import { useThumbnail } from "./useThumbnail";
+import { Notice } from "./card/Notice";
+import { ThumbnailFrame } from "./card/ThumbnailFrame";
 
 interface PageCardProps {
   cache: ThumbnailCache;
@@ -61,7 +61,14 @@ export function PageCard({
   onRotate,
   selected,
 }: PageCardProps) {
-  const { url: thumbnailUrl, failed } = useThumbnail(cache, slotId, thumbnailWidth);
+  const [thumbnail, failed] = ThumbnailFrame({
+    cache,
+    fileName,
+    rotation,
+    slotId,
+    thumbnailWidth,
+    placeholderClassName: "h-20 w-16",
+  });
 
   return (
     <CardFrame
@@ -72,30 +79,10 @@ export function PageCard({
       fileName={fileName}
       preview={
         <div className="group relative h-full w-full">
-          {thumbnailUrl ? (
-            <RotatedThumbnail
-              alt={`Thumbnail for ${fileName}`}
-              rotation={rotation}
-              src={thumbnailUrl}
-            />
-          ) : (
-            // A page-shaped placeholder keeps the card the same size before
-            // the thumbnail arrives, so a scrolling grid never reflows.
-            <div className="grid h-full place-items-center">
-              <div className="flex flex-col items-center">
-                <div
-                  className="h-20 w-16 rounded border border-slate-600 bg-slate-700"
-                  role="img"
-                  aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
-                />
-                {failed && (
-                  <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
-                    Thumbnail unavailable
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+          <div className="flex h-full w-full flex-col items-center justify-center">
+            {thumbnail}
+            {failed && <Notice>Thumbnail unavailable</Notice>}
+          </div>
           <div className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button
               aria-label={`Rotate left ${fileName}`}

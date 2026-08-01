@@ -192,6 +192,14 @@ describe("PageList", () => {
     expect(container.querySelectorAll("article")).toHaveLength(3);
   });
 
+  it("gives its toggle the same accessible name as the grid toggle", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderList();
+
+    expect(container.querySelector('[aria-label="Expand 10.pdf"]')).not.toBeNull();
+  });
+
   it("sends one reorder command with the grid coordinates after a keyboard drag", async () => {
     const reordered: PlanSnapshot = {
       slots: [

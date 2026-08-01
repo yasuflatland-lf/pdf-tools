@@ -1,7 +1,8 @@
 import { countLabel } from "../lib/format";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
-import { RotatedThumbnail } from "./RotatedThumbnail";
-import { useThumbnail } from "./useThumbnail";
+import { Notice } from "./card/Notice";
+import { ThumbnailFrame } from "./card/ThumbnailFrame";
+import { ToggleButton } from "./card/ToggleButton";
 
 interface PageListRowProps {
   cache: ThumbnailCache;
@@ -26,30 +27,21 @@ export function PageListRow({
   slotId,
   thumbnailWidth,
 }: PageListRowProps) {
-  const { url: thumbnailUrl, failed } = useThumbnail(cache, slotId, thumbnailWidth);
+  const [thumbnail, failed] = ThumbnailFrame({
+    cache,
+    fileName,
+    rotation,
+    slotId,
+    thumbnailWidth,
+    placeholderClassName: "h-14 w-11",
+  });
 
   return (
     <article className="flex h-24 items-center gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
       <div className="grid h-20 w-16 shrink-0 place-items-center overflow-hidden rounded bg-slate-800/70">
-        {thumbnailUrl ? (
-          <RotatedThumbnail
-            alt={`Thumbnail for ${fileName}`}
-            rotation={rotation}
-            src={thumbnailUrl}
-          />
-        ) : (
-          <div
-            className="h-14 w-11 rounded border border-slate-600 bg-slate-700"
-            role="img"
-            aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
-          />
-        )}
+        {thumbnail}
       </div>
-      {failed && (
-        <p className="mt-2 rounded-md border border-amber-700/60 bg-amber-950/50 px-2 py-1 text-xs text-amber-100">
-          Thumbnail unavailable
-        </p>
-      )}
+      {failed && <Notice>Thumbnail unavailable</Notice>}
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-slate-100" title={fileName}>
           {fileName}
@@ -58,28 +50,14 @@ export function PageListRow({
           {collapsed ? countLabel(pageCount, "page") : `Page ${pageNumber}`}
         </p>
       </div>
-      {onToggle &&
-        (collapsed ? (
-          <button
-            aria-label={`Expand ${fileName}`}
-            className="shrink-0 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Expand
-          </button>
-        ) : (
-          <button
-            aria-label={`Collapse ${fileName}`}
-            className="shrink-0 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Collapse
-          </button>
-        ))}
+      {onToggle && (
+        <ToggleButton
+          collapsed={collapsed}
+          fileName={fileName}
+          onToggle={onToggle}
+          className="shrink-0"
+        />
+      )}
     </article>
   );
 }
