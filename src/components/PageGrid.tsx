@@ -15,7 +15,6 @@ function getColumnCount(width: number): number {
 }
 
 export function PageGrid() {
-  const selectedSlots = useUiStore((state) => state.selectedSlots);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
 
@@ -34,12 +33,8 @@ export function PageGrid() {
       columnCount={columnCount}
       rowHeight={ROW_HEIGHT}
       viewMode="grid"
-      renderCard={(card, thumbnailWidth) => (
-        <PageGridCard
-          card={card}
-          selected={card.slotIds.every((slotId) => selectedSlots.has(slotId))}
-          thumbnailWidth={thumbnailWidth}
-        />
+      renderCard={(card, thumbnailWidth, selected) => (
+        <PageGridCard card={card} selected={selected} thumbnailWidth={thumbnailWidth} />
       )}
       scrollRef={scrollRef}
       thumbnailWidth={THUMBNAIL_WIDTH}

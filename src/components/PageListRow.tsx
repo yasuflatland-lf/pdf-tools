@@ -12,6 +12,7 @@ interface PageListRowProps {
   pageCount: number;
   pageNumber: number;
   rotation: number;
+  selected?: boolean;
   slotId: number;
   thumbnailWidth: number;
 }
@@ -24,6 +25,7 @@ export function PageListRow({
   pageCount,
   pageNumber,
   rotation,
+  selected,
   slotId,
   thumbnailWidth,
 }: PageListRowProps) {
@@ -37,7 +39,11 @@ export function PageListRow({
   });
 
   return (
-    <article className="flex h-24 items-center gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
+    <article
+      className={`flex h-24 items-center gap-4 overflow-hidden rounded-xl border bg-slate-900 px-3 py-2 ${
+        selected ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-800"
+      }`}
+    >
       <div className="grid h-20 w-16 shrink-0 place-items-center overflow-hidden rounded bg-slate-800/70">
         {thumbnail}
       </div>
