@@ -38,6 +38,7 @@ function PageListCard({ card, thumbnailWidth }: PageListCardProps) {
       }
       pageCount={card.pageCount}
       pageNumber={card.slot.page + 1}
+      rotation={card.slot.rotation}
       slotId={card.slot.id}
       thumbnailWidth={thumbnailWidth}
     />

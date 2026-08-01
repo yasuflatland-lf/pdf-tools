@@ -196,6 +196,7 @@ mod tests {
             entries: vec![ComposeEntry::PdfPage {
                 path: "/a.pdf".into(),
                 page: PageIndex(0),
+                rotation: Default::default(),
             }],
         };
         engine.compose(&plan, Path::new("/out.pdf")).unwrap();

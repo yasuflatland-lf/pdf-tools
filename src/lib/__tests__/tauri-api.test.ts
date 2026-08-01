@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
-import { addSources, reorder } from "../tauri-api";
+import { addSources, reorder, rotateSlots } from "../tauri-api";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -14,7 +14,7 @@ describe("tauri-api", () => {
   it("returns the snapshot produced by the add_sources command", async () => {
     const paths = ["/documents/first.pdf", "/images/page.png"];
     const snapshot: PlanSnapshot = {
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: false,
       can_redo: false,
@@ -40,5 +40,18 @@ describe("tauri-api", () => {
       fromEnd: 2,
       to: 3,
     });
+  });
+
+  it("passes camel-cased slot ids and the delta to the rotate_slots command", async () => {
+    const snapshot: PlanSnapshot = {
+      slots: [],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockResolvedValue(snapshot);
+
+    await expect(rotateSlots([2, 4], -1)).resolves.toBe(snapshot);
+    expect(invoke).toHaveBeenCalledWith("rotate_slots", { slotIds: [2, 4], delta: -1 });
   });
 });

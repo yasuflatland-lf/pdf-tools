@@ -10,25 +10,39 @@ let root: Root | undefined;
 
 function ShortcutClients({
   onRemove,
+  onRotateLeft,
+  onRotateRight,
   onUndo,
 }: {
   onRemove: (event: KeyboardEvent) => boolean;
+  onRotateLeft: (event: KeyboardEvent) => boolean;
+  onRotateRight: (event: KeyboardEvent) => boolean;
   onUndo: (event: KeyboardEvent) => boolean;
 }) {
   useShortcuts({ undo: onUndo });
   useShortcuts({ "remove-selected": onRemove });
+  useShortcuts({ "rotate-left": onRotateLeft, "rotate-right": onRotateRight });
   return null;
 }
 
 async function renderClients(
   onUndo: (event: KeyboardEvent) => boolean,
   onRemove: (event: KeyboardEvent) => boolean,
+  onRotateLeft: (event: KeyboardEvent) => boolean = () => false,
+  onRotateRight: (event: KeyboardEvent) => boolean = () => false,
 ): Promise<void> {
   const container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
-    root?.render(<ShortcutClients onRemove={onRemove} onUndo={onUndo} />);
+    root?.render(
+      <ShortcutClients
+        onRemove={onRemove}
+        onRotateLeft={onRotateLeft}
+        onRotateRight={onRotateRight}
+        onUndo={onUndo}
+      />,
+    );
   });
 }
 
@@ -65,7 +79,9 @@ describe("useShortcuts", () => {
     const firstUndo = vi.fn(() => true);
     const currentUndo = vi.fn(() => true);
     const remove = vi.fn(() => false);
-    await renderClients(firstUndo, remove);
+    const rotateLeft = vi.fn(() => false);
+    const rotateRight = vi.fn(() => false);
+    await renderClients(firstUndo, remove, rotateLeft, rotateRight);
 
     const initialUndo = shortcut({ ctrlKey: true, key: "z" });
     act(() => window.dispatchEvent(initialUndo));
@@ -73,7 +89,14 @@ describe("useShortcuts", () => {
     expect(initialUndo.defaultPrevented).toBe(true);
 
     await act(async () => {
-      root?.render(<ShortcutClients onRemove={remove} onUndo={currentUndo} />);
+      root?.render(
+        <ShortcutClients
+          onRemove={remove}
+          onRotateLeft={rotateLeft}
+          onRotateRight={rotateRight}
+          onUndo={currentUndo}
+        />,
+      );
     });
     const updatedUndo = shortcut({ ctrlKey: true, key: "z" });
     act(() => window.dispatchEvent(updatedUndo));
@@ -123,5 +146,27 @@ describe("useShortcuts", () => {
     act(() => window.dispatchEvent(alreadyHandled));
 
     expect(undo).not.toHaveBeenCalled();
+  });
+
+  it("dispatches modifier bracket shortcuts to their registered handlers", async () => {
+    const rotateLeft = vi.fn(() => true);
+    const rotateRight = vi.fn(() => true);
+    await renderClients(
+      vi.fn(() => true),
+      vi.fn(() => true),
+      rotateLeft,
+      rotateRight,
+    );
+
+    const right = shortcut({ ctrlKey: true, key: "]" });
+    act(() => window.dispatchEvent(right));
+
+    const left = shortcut({ ctrlKey: true, key: "[" });
+    act(() => window.dispatchEvent(left));
+
+    expect(rotateRight).toHaveBeenCalledWith(right);
+    expect(rotateLeft).toHaveBeenCalledWith(left);
+    expect(right.defaultPrevented).toBe(true);
+    expect(left.defaultPrevented).toBe(true);
   });
 });

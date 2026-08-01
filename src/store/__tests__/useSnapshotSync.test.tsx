@@ -81,7 +81,7 @@ describe("useSnapshotSync", () => {
 
     act(() => {
       usePlanStore.getState().setSnapshot({
-        slots: [{ id: 2, source: 10, page: 1 }],
+        slots: [{ id: 2, source: 10, page: 1, rotation: 0 }],
         sources: [source(10, "grouped")],
         can_undo: true,
         can_redo: false,

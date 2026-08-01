@@ -55,10 +55,12 @@ impl Compose<'_> {
                     SourceKind::Pdf => ComposeEntry::PdfPage {
                         path: source.path.clone(),
                         page: slot.page,
+                        rotation: slot.rotation,
                     },
                     SourceKind::Image => ComposeEntry::Image {
                         path: source.path.clone(),
                         fit_to,
+                        rotation: slot.rotation,
                     },
                 }
             })
@@ -101,7 +103,7 @@ mod tests {
     use crate::domain::document::MergeDocument;
     use crate::domain::geometry::PageSize;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
-    use crate::domain::plan::{MergePlan, PageSlot};
+    use crate::domain::plan::{MergePlan, PageSlot, Rotation};
     use crate::domain::source::{SourceFile, SourceKind, SourceStatus};
     use crate::infrastructure::fake_engine::FakePdfEngine;
 
@@ -150,6 +152,7 @@ mod tests {
             id: SlotId(id),
             source: SourceId(source),
             page: PageIndex(page),
+            rotation: Default::default(),
         }
     }
 
@@ -252,6 +255,69 @@ mod tests {
                 assert_eq!(fit_to.size_class(), LETTER.size_class());
             }
             other => panic!("expected an image entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rotated_slots_produce_entries_carrying_their_rotation() {
+        let temp_dir = tempdir().expect("temporary directory should be created");
+        let pdf_path = create_file(&temp_dir, "two-pages.pdf");
+        let mut first = slot(1, 10, 0);
+        first.rotation = Rotation::from_quarter_turns(1);
+        let mut second = slot(2, 10, 1);
+        second.rotation = Rotation::from_quarter_turns(3);
+        let document = MergeDocument::new(
+            MergePlan::new(vec![first, second]),
+            vec![pdf_source(10, pdf_path, vec![PageSize::A4_PORTRAIT; 2])],
+        );
+        let engine = FakePdfEngine::new();
+
+        Compose { pdf: &engine }
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
+            .unwrap();
+
+        let composed = engine.last_composed().unwrap();
+        assert!(matches!(
+            composed.entries[0],
+            ComposeEntry::PdfPage { rotation, .. }
+                if rotation == Rotation::from_quarter_turns(1)
+        ));
+        assert!(matches!(
+            composed.entries[1],
+            ComposeEntry::PdfPage { rotation, .. }
+                if rotation == Rotation::from_quarter_turns(3)
+        ));
+    }
+
+    #[test]
+    fn an_image_slots_own_rotation_does_not_change_its_fit_to() {
+        let temp_dir = tempdir().expect("temporary directory should be created");
+        let pdf_path = create_file(&temp_dir, "letter.pdf");
+        let image_path = create_file(&temp_dir, "image.jpg");
+        let mut image_slot = slot(2, 20, 0);
+        image_slot.rotation = Rotation::from_quarter_turns(1);
+        let document = MergeDocument::new(
+            MergePlan::new(vec![slot(1, 10, 0), image_slot]),
+            vec![
+                pdf_source(10, pdf_path, vec![LETTER]),
+                image_source(20, image_path),
+            ],
+        );
+        let engine = FakePdfEngine::new();
+
+        Compose { pdf: &engine }
+            .execute(&document, Path::new("/out.pdf"), &NullProgress)
+            .unwrap();
+
+        let composed = engine.last_composed().unwrap();
+        match composed.entries[1] {
+            ComposeEntry::Image {
+                fit_to, rotation, ..
+            } => {
+                assert_eq!(fit_to.size_class(), LETTER.size_class());
+                assert_eq!(rotation, Rotation::from_quarter_turns(1));
+            }
+            ref other => panic!("expected an image entry, got {other:?}"),
         }
     }
 

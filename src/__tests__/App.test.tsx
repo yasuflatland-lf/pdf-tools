@@ -116,8 +116,8 @@ describe("App", () => {
   it("shows a source returned after a file is dropped", async () => {
     invoke.mockResolvedValue({
       slots: [
-        { id: 1, source: 10, page: 0 },
-        { id: 2, source: 10, page: 1 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
       ],
       sources: [
         {
@@ -154,8 +154,8 @@ describe("App", () => {
   it("removes the selected slots with Delete", async () => {
     const loaded: PlanSnapshot = {
       slots: [
-        { id: 1, source: 10, page: 0 },
-        { id: 2, source: 10, page: 1 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
       ],
       sources: [
         {
@@ -225,8 +225,8 @@ describe("App", () => {
   it("selects every slot with the platform modifier and A, and clears it with Escape", async () => {
     usePlanStore.getState().setSnapshot({
       slots: [
-        { id: 1, source: 10, page: 0 },
-        { id: 2, source: 10, page: 1 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
       ],
       sources: [],
       can_undo: false,
@@ -251,7 +251,7 @@ describe("App", () => {
 
   it("keeps a source that cannot be merged on screen with its reason", async () => {
     invoke.mockResolvedValue({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [
         {
           id: 10,

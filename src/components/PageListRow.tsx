@@ -1,5 +1,6 @@
 import { countLabel } from "../lib/format";
 import type { ThumbnailCache } from "../lib/thumbnail-cache";
+import { RotatedThumbnail } from "./RotatedThumbnail";
 import { useThumbnail } from "./useThumbnail";
 
 interface PageListRowProps {
@@ -9,6 +10,7 @@ interface PageListRowProps {
   onToggle?: () => void;
   pageCount: number;
   pageNumber: number;
+  rotation: number;
   slotId: number;
   thumbnailWidth: number;
 }
@@ -20,6 +22,7 @@ export function PageListRow({
   onToggle,
   pageCount,
   pageNumber,
+  rotation,
   slotId,
   thumbnailWidth,
 }: PageListRowProps) {
@@ -29,10 +32,10 @@ export function PageListRow({
     <article className="flex h-24 items-center gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
       <div className="grid h-20 w-16 shrink-0 place-items-center overflow-hidden rounded bg-slate-800/70">
         {thumbnailUrl ? (
-          <img
-            className="h-full w-full object-contain"
-            src={thumbnailUrl}
+          <RotatedThumbnail
             alt={`Thumbnail for ${fileName}`}
+            rotation={rotation}
+            src={thumbnailUrl}
           />
         ) : (
           <div

@@ -82,6 +82,13 @@ impl PlanSession {
         self.finish_change();
     }
 
+    pub fn rotate(&mut self, ids: &[SlotId], delta: i8) {
+        self.begin_change();
+        let plan = operations::rotate(self.document.plan(), ids, delta);
+        self.document = self.document.with_plan(plan);
+        self.finish_change();
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(snapshot) = self.undo.pop() else {
             return false;

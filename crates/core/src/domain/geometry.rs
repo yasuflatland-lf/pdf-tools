@@ -21,6 +21,14 @@ impl PageSize {
         height_pt: 841.89,
     };
 
+    /// Returns the page size with its width and height exchanged.
+    pub fn turned(self) -> Self {
+        Self {
+            width_pt: self.height_pt,
+            height_pt: self.width_pt,
+        }
+    }
+
     /// Returns the page's equivalence class on the one-point lattice.
     pub fn size_class(&self) -> SizeClass {
         SizeClass {
@@ -47,6 +55,22 @@ pub struct RasterImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn turned_page_size_exchanges_the_axes() {
+        let size = PageSize {
+            width_pt: 612.0,
+            height_pt: 792.0,
+        };
+
+        assert_eq!(
+            size.turned(),
+            PageSize {
+                width_pt: 792.0,
+                height_pt: 612.0,
+            }
+        );
+    }
 
     #[test]
     fn page_sizes_in_the_same_lattice_cell_have_the_same_size_class() {

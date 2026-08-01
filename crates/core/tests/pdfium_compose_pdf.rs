@@ -8,8 +8,10 @@ use pdf_tools_core::application::errors::PdfError;
 use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, PdfEngine};
 use pdf_tools_core::domain::geometry::RasterSpec;
 use pdf_tools_core::domain::ids::PageIndex;
+use pdf_tools_core::domain::plan::Rotation;
 use pdfium_render::prelude::{
-    PdfColor, PdfPageObjectsCommon, PdfPagePaperSize, PdfPagePathObject, PdfPoints, PdfRect,
+    PdfColor, PdfPageObjectsCommon, PdfPagePaperSize, PdfPagePathObject, PdfPageRenderRotation,
+    PdfPoints, PdfRect,
 };
 use phash::{average_hash, hamming_distance, render_page};
 use std::path::{Path, PathBuf};
@@ -23,6 +25,13 @@ fn temp_path(name: &str) -> PathBuf {
         std::process::id(),
         NEXT_ID.fetch_add(1, Ordering::Relaxed)
     ))
+}
+
+fn page_rotation(path: &Path) -> PdfPageRenderRotation {
+    engine().with_library(|pdfium| {
+        let document = pdfium.load_pdf_from_file(path, None).unwrap();
+        document.pages().get(0).unwrap().rotation().unwrap()
+    })
 }
 
 /// A three-page PDF whose pages carry a black bar at a different height each.
@@ -84,10 +93,12 @@ fn compose_writes_the_pages_in_plan_order() {
             ComposeEntry::PdfPage {
                 path: source.to_path_buf(),
                 page: PageIndex(2),
+                rotation: Default::default(),
             },
             ComposeEntry::PdfPage {
                 path: source.to_path_buf(),
                 page: PageIndex(0),
+                rotation: Default::default(),
             },
         ],
     };
@@ -131,10 +142,12 @@ fn compose_preserves_each_page_size() {
             ComposeEntry::PdfPage {
                 path: source.clone(),
                 page: PageIndex(0),
+                rotation: Default::default(),
             },
             ComposeEntry::PdfPage {
                 path: source,
                 page: PageIndex(2),
+                rotation: Default::default(),
             },
         ],
     };
@@ -155,10 +168,12 @@ fn the_same_page_may_be_included_twice() {
             ComposeEntry::PdfPage {
                 path: source.clone(),
                 page: PageIndex(0),
+                rotation: Default::default(),
             },
             ComposeEntry::PdfPage {
                 path: source,
                 page: PageIndex(0),
+                rotation: Default::default(),
             },
         ],
     };
@@ -167,11 +182,30 @@ fn the_same_page_may_be_included_twice() {
 }
 
 #[test]
+fn a_slot_rotation_is_added_to_the_source_pages_rotation() {
+    let out = temp_path("added-rotation.pdf");
+    let source = fixture("rotated_page.pdf");
+    assert_eq!(page_rotation(&source), PdfPageRenderRotation::Degrees90);
+    let plan = ComposePlan {
+        entries: vec![ComposeEntry::PdfPage {
+            path: source,
+            page: PageIndex(0),
+            rotation: Rotation::from_quarter_turns(1),
+        }],
+    };
+
+    engine().compose(&plan, &out).unwrap();
+
+    assert_eq!(page_rotation(&out), PdfPageRenderRotation::Degrees180);
+}
+
+#[test]
 fn compose_reports_missing_when_a_source_disappeared() {
     let plan = ComposePlan {
         entries: vec![ComposeEntry::PdfPage {
             path: "/gone.pdf".into(),
             page: PageIndex(0),
+            rotation: Default::default(),
         }],
     };
     let err = engine()
@@ -186,6 +220,7 @@ fn compose_reports_write_failure_for_an_unwritable_destination() {
         entries: vec![ComposeEntry::PdfPage {
             path: fixture("multi_page.pdf"),
             page: PageIndex(0),
+            rotation: Default::default(),
         }],
     };
     let err = engine()

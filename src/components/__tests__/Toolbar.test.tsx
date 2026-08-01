@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   removeSlots: vi.fn(),
   reorder: vi.fn(),
   revealItemInDir: vi.fn(),
+  rotateSlots: vi.fn(),
   save: vi.fn(),
   undo: vi.fn(),
   unlisten: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("../../lib/tauri-api", () => ({
   redo: mocks.redo,
   removeSlots: mocks.removeSlots,
   reorder: mocks.reorder,
+  rotateSlots: mocks.rotateSlots,
   undo: mocks.undo,
 }));
 vi.mock("../../lib/output-dir", () => ({
@@ -93,7 +95,7 @@ function getButton(container: HTMLElement, name: string): HTMLButtonElement {
 
 function loadOneSlot(): void {
   usePlanStore.getState().setSnapshot({
-    slots: [{ id: 1, source: 10, page: 0 }],
+    slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
     sources: [],
     can_undo: false,
     can_redo: false,
@@ -134,6 +136,15 @@ function redoShortcut(): KeyboardEvent {
   });
 }
 
+function rotateRightShortcut(): KeyboardEvent {
+  return new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: "]",
+    metaKey: true,
+  });
+}
+
 async function click(button: HTMLButtonElement): Promise<void> {
   await act(async () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -165,6 +176,7 @@ describe("Toolbar", () => {
     mocks.redo.mockReset();
     mocks.removeSlots.mockReset();
     mocks.reorder.mockReset();
+    mocks.rotateSlots.mockReset();
     mocks.undo.mockReset();
 
     mocks.defaultOutputDir.mockResolvedValue("/Users/me/Downloads");
@@ -178,7 +190,7 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid", modalOpen: false });
+    useUiStore.setState({ viewMode: "grid", modalOpen: false, selectedSlots: new Set() });
   });
 
   afterEach(async () => {
@@ -191,7 +203,7 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid", modalOpen: false });
+    useUiStore.setState({ viewMode: "grid", modalOpen: false, selectedSlots: new Set() });
     vi.restoreAllMocks();
   });
 
@@ -249,15 +261,108 @@ describe("Toolbar", () => {
     expect(getButton(container, "Redo").disabled).toBe(true);
   });
 
+  it("enables rotation only while the selection is non-empty", async () => {
+    const container = await renderToolbar();
+
+    expect(getButton(container, "Rotate left").disabled).toBe(true);
+    expect(getButton(container, "Rotate right").disabled).toBe(true);
+
+    act(() => {
+      useUiStore.getState().selectSlots([1]);
+    });
+
+    expect(getButton(container, "Rotate left").disabled).toBe(false);
+    expect(getButton(container, "Rotate right").disabled).toBe(false);
+  });
+
+  it("rotates the current selection from the toolbar controls", async () => {
+    mocks.rotateSlots.mockResolvedValue({
+      slots: [],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    useUiStore.getState().selectSlots([2, 4]);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Rotate left"));
+    await click(getButton(container, "Rotate right"));
+
+    expect(mocks.rotateSlots.mock.calls).toEqual([
+      [[2, 4], -1],
+      [[2, 4], 1],
+    ]);
+  });
+
+  it("rotates the current selection from the Cmd+] shortcut", async () => {
+    loadOneSlot();
+    useUiStore.getState().selectSlots([1]);
+    mocks.rotateSlots.mockResolvedValue({
+      slots: [{ id: 1, source: 10, page: 0, rotation: 1 }],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    });
+    await renderToolbar();
+    const event = rotateRightShortcut();
+
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(mocks.rotateSlots).toHaveBeenCalledOnce();
+    expect(mocks.rotateSlots).toHaveBeenCalledWith([1], 1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("ignores the Cmd+] shortcut when the selection is empty", async () => {
+    loadOneSlot();
+    await renderToolbar();
+    const event = rotateRightShortcut();
+
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(mocks.rotateSlots).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("ignores the Cmd+] shortcut while merging", async () => {
+    const pending = deferred<MergeReportDto>();
+    loadOneSlot();
+    useUiStore.getState().selectSlots([1]);
+    mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
+    mocks.compose.mockReturnValue(pending.promise);
+    const container = await renderToolbar();
+
+    await click(getButton(container, "Merge"));
+    const event = rotateRightShortcut();
+    await act(async () => {
+      window.dispatchEvent(event);
+      await Promise.resolve();
+    });
+
+    expect(mocks.rotateSlots).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+
+    await act(async () => {
+      pending.resolve({ page_count: 1, bytes_written: 512 });
+      await pending.promise;
+    });
+  });
+
   it("stores the snapshot returned by Undo", async () => {
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
     });
     mocks.undo.mockResolvedValue({
-      slots: [{ id: 2, source: 20, page: 0 }],
+      slots: [{ id: 2, source: 20, page: 0, rotation: 0 }],
       sources: [],
       can_undo: false,
       can_redo: true,
@@ -267,13 +372,13 @@ describe("Toolbar", () => {
     await click(getButton(container, "Undo"));
 
     expect(mocks.undo).toHaveBeenCalledOnce();
-    expect(usePlanStore.getState().slots).toEqual([{ id: 2, source: 20, page: 0 }]);
+    expect(usePlanStore.getState().slots).toEqual([{ id: 2, source: 20, page: 0, rotation: 0 }]);
     expect(usePlanStore.getState().canRedo).toBe(true);
   });
 
   it("stores the snapshot returned by the Ctrl+Z shortcut", async () => {
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
@@ -319,7 +424,7 @@ describe("Toolbar", () => {
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: true, can_redo: false });
     mocks.redo.mockResolvedValue({
-      slots: [{ id: 3, source: 10, page: 2 }],
+      slots: [{ id: 3, source: 10, page: 2, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
@@ -347,13 +452,13 @@ describe("Toolbar", () => {
     });
 
     expect(mocks.redo).toHaveBeenCalledOnce();
-    expect(usePlanStore.getState().slots).toEqual([{ id: 3, source: 10, page: 2 }]);
+    expect(usePlanStore.getState().slots).toEqual([{ id: 3, source: 10, page: 2, rotation: 0 }]);
   });
 
   it("logs a failed undo and leaves the plan untouched", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: false,
@@ -364,7 +469,7 @@ describe("Toolbar", () => {
     await click(getButton(container, "Undo"));
 
     expect(consoleError).toHaveBeenCalledWith("undo failed", expect.any(Error));
-    expect(usePlanStore.getState().slots).toEqual([{ id: 1, source: 10, page: 0 }]);
+    expect(usePlanStore.getState().slots).toEqual([{ id: 1, source: 10, page: 0, rotation: 0 }]);
     consoleError.mockRestore();
   });
 
@@ -455,7 +560,7 @@ describe("Toolbar", () => {
   it("names the failing file in a dialog and keeps the marker after it is closed", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [
         {
           id: 10,
@@ -566,6 +671,12 @@ describe("Toolbar", () => {
     expect(getButton(container, "Redo").getAttribute("title")).toBe(
       `Redo (${shortcutHint("redo", navigator.userAgent)})`,
     );
+    expect(getButton(container, "Rotate left").getAttribute("title")).toBe(
+      `Rotate left (${shortcutHint("rotate-left", navigator.userAgent)})`,
+    );
+    expect(getButton(container, "Rotate right").getAttribute("title")).toBe(
+      `Rotate right (${shortcutHint("rotate-right", navigator.userAgent)})`,
+    );
     expect(getButton(container, "Grid view").getAttribute("aria-label")).toBe("Grid view");
     expect(getButton(container, "List view").getAttribute("aria-label")).toBe("List view");
   });
@@ -573,11 +684,12 @@ describe("Toolbar", () => {
   it("locks the history buttons and renames the primary button while merging", async () => {
     const pending = deferred<MergeReportDto>();
     usePlanStore.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: true,
       can_redo: true,
     });
+    useUiStore.getState().selectSlots([1]);
     mocks.save.mockResolvedValue("/Users/me/Documents/book.pdf");
     mocks.compose.mockReturnValue(pending.promise);
     const container = await renderToolbar();
@@ -586,6 +698,8 @@ describe("Toolbar", () => {
 
     expect(getButton(container, "Undo").disabled).toBe(true);
     expect(getButton(container, "Redo").disabled).toBe(true);
+    expect(getButton(container, "Rotate left").disabled).toBe(true);
+    expect(getButton(container, "Rotate right").disabled).toBe(true);
     expect(getButton(container, "Merging…").disabled).toBe(true);
 
     await act(async () => {
@@ -594,6 +708,8 @@ describe("Toolbar", () => {
     });
 
     expect(getButton(container, "Undo").disabled).toBe(false);
+    expect(getButton(container, "Rotate left").disabled).toBe(false);
+    expect(getButton(container, "Rotate right").disabled).toBe(false);
     expect(getButton(container, "Merge").disabled).toBe(false);
   });
 });

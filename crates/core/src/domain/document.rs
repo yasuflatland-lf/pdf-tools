@@ -75,6 +75,13 @@ impl MergeDocument {
                     .page_sizes
                     .get(slot.page.0 as usize)
                     .copied()
+                    .map(|page_size| {
+                        if slot.rotation.swaps_axes() {
+                            page_size.turned()
+                        } else {
+                            page_size
+                        }
+                    })
                     .map(|page_size| (plan_index, page_size))
             })
             .fold(
@@ -109,6 +116,7 @@ mod tests {
 
     use super::*;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
+    use crate::domain::operations;
     use crate::domain::source::SourceStatus;
 
     const A4: PageSize = PageSize::A4_PORTRAIT;
@@ -126,6 +134,7 @@ mod tests {
                     id: SlotId(slot_id as u64),
                     source: SourceId(source_id),
                     page: PageIndex(page_index),
+                    rotation: Default::default(),
                 })
                 .collect(),
         )
@@ -187,6 +196,7 @@ mod tests {
             id: SlotId(1),
             source: SourceId(99),
             page: PageIndex(0),
+            rotation: Default::default(),
         };
 
         let document = MergeDocument::new(MergePlan::new(vec![orphan]), Vec::new());
@@ -330,6 +340,18 @@ mod tests {
         assert_eq!(
             document.dominant_page_size().size_class(),
             LETTER.size_class()
+        );
+    }
+
+    #[test]
+    fn rotated_pdf_slots_are_counted_by_their_effective_size() {
+        let plan = plan_with(&[(10, 0), (10, 1)]);
+        let turned = operations::rotate(&plan, &[SlotId(0), SlotId(1)], 1);
+        let document = MergeDocument::new(turned, vec![pdf_source(10, vec![A4; 2])]);
+
+        assert_eq!(
+            document.dominant_page_size().size_class(),
+            A4.turned().size_class()
         );
     }
 

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useUiStore } from "../store/ui-store";
+import { usePlanStore } from "../store/plan-store";
 import { CardSurface, useCardSurfaceCache } from "./CardSurface";
 import { GroupCard } from "./GroupCard";
 import type { DisplayCard } from "./usePageCards";
@@ -65,8 +66,15 @@ function PageGridCard({ card, selected, thumbnailWidth }: PageGridCardProps) {
       }
       pageCount={card.pageCount}
       pageNumber={card.slot.page + 1}
+      rotation={card.slot.rotation}
       slotId={card.slot.id}
       thumbnailWidth={thumbnailWidth}
+      onRotate={(delta) => {
+        void usePlanStore
+          .getState()
+          .rotate(card.slotIds, delta)
+          .catch((error: unknown) => console.error("rotate failed", error));
+      }}
       selected={selected}
     />
   );

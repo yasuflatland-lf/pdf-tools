@@ -38,7 +38,12 @@ export function groupContiguous(slots: PageSlotDto[], sources: SourceFileDto[]):
     const source = sourcesById.get(slot.source);
     const previous = groups.at(-1);
 
-    if (!previous || source?.grouping !== "grouped" || previous.sourceId !== slot.source) {
+    if (
+      !previous ||
+      source?.grouping !== "grouped" ||
+      previous.sourceId !== slot.source ||
+      previous.slots[0]?.rotation !== slot.rotation
+    ) {
       groups.push(createGroup(slot));
       continue;
     }

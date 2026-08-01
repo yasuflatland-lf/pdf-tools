@@ -44,6 +44,7 @@ pub struct PageSlotDto {
     #[ts(type = "number")]
     pub source: u64,
     pub page: u32,
+    pub rotation: u8,
 }
 
 /// A source file and the metadata the UI needs to label it. `file_name` is the
@@ -132,6 +133,7 @@ impl From<&PageSlot> for PageSlotDto {
             id: slot.id.0,
             source: slot.source.0,
             page: slot.page.0,
+            rotation: slot.rotation.quarter_turns(),
         }
     }
 }
@@ -271,11 +273,12 @@ mod tests {
             id: pdf_tools_core::domain::ids::SlotId(3),
             source: SourceId(7),
             page: pdf_tools_core::domain::ids::PageIndex(1),
+            rotation: Default::default(),
         };
         let value = serde_json::to_value(PageSlotDto::from(&slot)).unwrap();
         assert_eq!(
             value,
-            serde_json::json!({ "id": 3, "source": 7, "page": 1 })
+            serde_json::json!({ "id": 3, "source": 7, "page": 1, "rotation": 0 })
         );
     }
 

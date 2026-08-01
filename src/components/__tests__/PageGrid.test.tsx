@@ -33,6 +33,7 @@ function slots(sourceId: number, pageCount: number): PageSlotDto[] {
     id: page + 1,
     source: sourceId,
     page,
+    rotation: 0,
   }));
 }
 
@@ -121,6 +122,21 @@ async function pressArrow(key: string): Promise<void> {
   await act(async () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }));
   });
+}
+
+function pointerEvent(type: string, clientX: number, clientY: number): MouseEvent {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    button: 0,
+    cancelable: true,
+    clientX,
+    clientY,
+  });
+  Object.defineProperties(event, {
+    isPrimary: { value: true },
+    pointerId: { value: 1 },
+  });
+  return event;
 }
 
 function stopMeasuringElements(): void {
@@ -273,6 +289,44 @@ describe("PageGrid", () => {
     // dnd-kit's keyboard sensor listens on the sortable wrapper; letting the
     // key through would pick the card up instead of toggling the group.
     expect(sortable?.style.opacity).toBe("1");
+  });
+
+  it("keeps a pointer press on a rotate control away from the drag sensor", async () => {
+    load(source(10, "ungrouped", 1), 1);
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+    const sortable = rotate?.closest<HTMLElement>('[aria-roledescription="sortable"]');
+    layOutSortableCards(container);
+
+    await act(async () => {
+      rotate?.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      await Promise.resolve();
+    });
+
+    expect(sortable?.style.opacity).toBe("1");
+
+    act(() => {
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+    });
+  });
+
+  // A collapsed group card -- the default state of every multi-page PDF -- is
+  // blanketed by the full-preview Expand overlay, so the pointer never rests on
+  // anything inside the card's own subtree. jsdom applies no stylesheet, so what
+  // the test can check is the one structural condition `.group:hover` needs: the
+  // marked ancestor has to contain the overlay as well as the buttons.
+  it("keeps the rotate controls inside the hover scope the expand overlay sits in", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLElement>('[aria-label="Expand 10.pdf"]');
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+
+    expect(rotate?.parentElement?.className).toContain("group-hover:opacity-100");
+    const hoverScope = expand?.closest(".group");
+    expect(hoverScope).not.toBeNull();
+    expect(hoverScope?.contains(rotate as HTMLElement)).toBe(true);
   });
 
   it("renders no expand or collapse control for an ungrouped source", async () => {
@@ -471,12 +525,72 @@ describe("PageGrid", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:thumbnail");
   });
 
+  it("rotates a card thumbnail immediately without rasterizing it again", async () => {
+    const rotated: PlanSnapshot = {
+      slots: [{ id: 1, source: 10, page: 0, rotation: 1 }],
+      sources: [source(10, "ungrouped", 1)],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "rotate_slots" ? rotated : new Uint8Array([1, 2, 3])),
+    );
+    load(source(10, "ungrouped", 1), 1);
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLButtonElement>('[aria-label="Rotate right 10.pdf"]');
+
+    await act(async () => {
+      rotate?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(invoke.mock.calls.filter((call) => call[0] === "rotate_slots")).toEqual([
+      ["rotate_slots", { slotIds: [1], delta: 1 }],
+    ]);
+    expect(container.querySelector("img")?.style.transform).toContain("rotate(90deg)");
+    expect(invoke.mock.calls.filter((call) => call[0] === "rasterize_slot")).toHaveLength(1);
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-label")).toContain(
+      "90° clockwise",
+    );
+  });
+
+  // The card's frame is fixed, so a quarter turn -- which exchanges the image
+  // box's axes -- has to be paired with a scale, or the turned thumbnail is
+  // clipped by the preview it overflows.
+  it("scales a quarter-turned thumbnail down to fit the fixed preview area", async () => {
+    // The stubbed preview measures 800x600, so a turned 600x800 box fits only
+    // at min(800/600, 600/800); an upright or half-turned page needs no scale.
+    const expectedScale = new Map([
+      [0, "1"],
+      [1, "0.75"],
+      [2, "1"],
+      [3, "0.75"],
+    ]);
+
+    for (const [rotation, scale] of expectedScale) {
+      usePlanStore.getState().setSnapshot({
+        slots: [{ id: 1, source: 10, page: 0, rotation }],
+        sources: [source(10, "ungrouped", 1)],
+        can_undo: false,
+        can_redo: false,
+      });
+
+      const container = await renderGrid();
+      const thumbnail = container.querySelector("img");
+
+      expect(thumbnail?.style.transform).toContain(`rotate(${rotation * 90}deg)`);
+      expect(thumbnail?.parentElement?.style.getPropertyValue("--thumbnail-rotation-scale")).toBe(
+        scale,
+      );
+    }
+  });
+
   it("sends exactly one reorder command when a card is dropped on another", async () => {
     const reordered: PlanSnapshot = {
       slots: [
-        { id: 2, source: 10, page: 1 },
-        { id: 1, source: 10, page: 0 },
-        { id: 3, source: 10, page: 2 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 3, source: 10, page: 2, rotation: 0 },
       ],
       sources: [source(10, "ungrouped", 3)],
       can_undo: true,

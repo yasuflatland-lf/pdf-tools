@@ -64,8 +64,8 @@ function deleteShortcut(): KeyboardEvent {
 function loadPages(): void {
   usePlanStore.getState().setSnapshot({
     slots: [
-      { id: 1, source: 10, page: 0 },
-      { id: 2, source: 10, page: 1 },
+      { id: 1, source: 10, page: 0, rotation: 0 },
+      { id: 2, source: 10, page: 1, rotation: 0 },
     ],
     sources: [
       {

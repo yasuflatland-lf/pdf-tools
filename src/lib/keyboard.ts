@@ -9,6 +9,8 @@ export type ShortcutAction =
   | "clear-selection"
   | "undo"
   | "redo"
+  | "rotate-left"
+  | "rotate-right"
   | "focus-previous"
   | "focus-next"
   | "focus-row-previous"
@@ -64,6 +66,12 @@ export function resolveShortcut(event: ShortcutEvent): ShortcutAction | null {
     if (key === "z") {
       return event.shiftKey === true ? "redo" : "undo";
     }
+    if (key === "[") {
+      return "rotate-left";
+    }
+    if (key === "]") {
+      return "rotate-right";
+    }
     return null;
   }
 
@@ -87,7 +95,7 @@ export function resolveShortcut(event: ShortcutEvent): ShortcutAction | null {
 }
 
 /** The actions whose shortcut is worth printing in a tooltip. */
-type HintableAction = Extract<ShortcutAction, "undo" | "redo">;
+type HintableAction = Extract<ShortcutAction, "undo" | "redo" | "rotate-left" | "rotate-right">;
 
 /**
  * How a shortcut is spelled for the reader. The user agent is a parameter
@@ -96,10 +104,13 @@ type HintableAction = Extract<ShortcutAction, "undo" | "redo">;
  */
 export function shortcutHint(action: HintableAction, userAgent: string): string {
   const isMac = /mac|iphone|ipad/i.test(userAgent);
-  if (isMac) {
-    return action === "redo" ? "⇧⌘Z" : "⌘Z";
-  }
-  return action === "redo" ? "Ctrl+Shift+Z" : "Ctrl+Z";
+  const hints: Record<HintableAction, [mac: string, other: string]> = {
+    undo: ["⌘Z", "Ctrl+Z"],
+    redo: ["⇧⌘Z", "Ctrl+Shift+Z"],
+    "rotate-left": ["⌘[", "Ctrl+["],
+    "rotate-right": ["⌘]", "Ctrl+]"],
+  };
+  return hints[action][isMac ? 0 : 1];
 }
 
 /**

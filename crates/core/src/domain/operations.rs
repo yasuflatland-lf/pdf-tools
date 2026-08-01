@@ -26,6 +26,23 @@ pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan {
     )
 }
 
+/// Turns the named slots, leaving every other slot untouched. Unknown ids are
+/// ignored, like every other operation over slot ids.
+pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan {
+    MergePlan::new(
+        plan.slots()
+            .iter()
+            .map(|slot| {
+                let mut slot = slot.clone();
+                if ids.contains(&slot.id) {
+                    slot.rotation = slot.rotation.turned(delta);
+                }
+                slot
+            })
+            .collect(),
+    )
+}
+
 /// Moves the contiguous range `from` so that it begins at index `to` **in the
 /// sequence that remains after the range is lifted out**. Both bounds are
 /// clamped. This definition removes the usual ambiguity about whether `to`
@@ -52,7 +69,10 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::domain::ids::{PageIndex, SourceId};
+    use crate::domain::{
+        ids::{PageIndex, SourceId},
+        plan::Rotation,
+    };
 
     fn plan_of(ids: &[u64]) -> MergePlan {
         MergePlan::new(
@@ -61,6 +81,7 @@ mod tests {
                     id: SlotId(i),
                     source: SourceId(i / 10),
                     page: PageIndex(i as u32 % 10),
+                    rotation: Rotation::default(),
                 })
                 .collect(),
         )
@@ -87,6 +108,34 @@ mod tests {
     fn remove_drops_the_named_slots_and_ignores_unknown_ids() {
         let new = remove(&plan_of(&[1, 2, 3]), &[SlotId(2), SlotId(99)]);
         assert_eq!(ids_of(&new), vec![1, 3]);
+    }
+
+    #[test]
+    fn rotate_returns_a_new_plan_and_leaves_the_original_untouched() {
+        let plan = plan_of(&[1, 2]);
+        let new = rotate(&plan, &[SlotId(1)], 1);
+
+        assert_eq!(plan.slots()[0].rotation, Rotation::default());
+        assert_eq!(new.slots()[0].rotation.quarter_turns(), 1);
+        assert_eq!(new.slots()[1].rotation, Rotation::default());
+    }
+
+    #[test]
+    fn four_turns_restore_the_original_rotation() {
+        let original = plan_of(&[1]);
+        let once = rotate(&original, &[SlotId(1)], 1);
+        let twice = rotate(&once, &[SlotId(1)], 1);
+        let three_times = rotate(&twice, &[SlotId(1)], 1);
+        let four_times = rotate(&three_times, &[SlotId(1)], 1);
+
+        assert_eq!(four_times, original);
+    }
+
+    #[test]
+    fn rotate_ignores_empty_and_unknown_id_lists() {
+        let plan = plan_of(&[1, 2]);
+        assert_eq!(rotate(&plan, &[], 1), plan);
+        assert_eq!(rotate(&plan, &[SlotId(99)], 1), plan);
     }
 
     #[test]
@@ -137,6 +186,7 @@ mod tests {
         );
         assert_eq!(remove(&empty, &[SlotId(1)]), empty);
         assert_eq!(reorder(&empty, 0..3, 7), empty);
+        assert_eq!(rotate(&empty, &[SlotId(1)], 1), empty);
     }
 
     proptest! {

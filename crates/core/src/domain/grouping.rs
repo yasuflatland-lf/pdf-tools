@@ -2,17 +2,23 @@ use super::ids::SourceId;
 use super::plan::MergePlan;
 
 /// Returns whether every slot of `source` sits in one contiguous run whose page
-/// numbers strictly ascend. Missing pages in that sequence are allowed.
+/// numbers strictly ascend and whose rotations match. Missing pages in that
+/// sequence are allowed.
 pub fn can_regroup(plan: &MergePlan, source: SourceId) -> bool {
     let mut previous_page = None;
+    let mut run_rotation = None;
     let mut run_ended = false;
 
     for slot in plan.slots() {
         if slot.source == source {
-            if run_ended || previous_page.is_some_and(|previous| slot.page <= previous) {
+            if run_ended
+                || previous_page.is_some_and(|previous| slot.page <= previous)
+                || run_rotation.is_some_and(|rotation| slot.rotation != rotation)
+            {
                 return false;
             }
             previous_page = Some(slot.page);
+            run_rotation = Some(slot.rotation);
         } else if previous_page.is_some() {
             run_ended = true;
         }
@@ -25,7 +31,10 @@ pub fn can_regroup(plan: &MergePlan, source: SourceId) -> bool {
 mod tests {
     use super::*;
     use crate::domain::ids::{PageIndex, SlotId, SourceId};
-    use crate::domain::plan::{MergePlan, PageSlot};
+    use crate::domain::{
+        operations::rotate,
+        plan::{MergePlan, PageSlot, Rotation},
+    };
 
     fn plan_with(pages: &[(u64, u32)]) -> MergePlan {
         MergePlan::new(
@@ -36,6 +45,7 @@ mod tests {
                     id: SlotId(slot_id as u64),
                     source: SourceId(source_id),
                     page: PageIndex(page_index),
+                    rotation: Rotation::default(),
                 })
                 .collect(),
         )
@@ -61,6 +71,16 @@ mod tests {
     fn removing_the_inserted_slot_regroups_the_source_automatically() {
         let plan = plan_with(&[(10, 0), (10, 1), (10, 2)]);
         assert!(can_regroup(&plan, SourceId(10)));
+    }
+
+    #[test]
+    fn turning_one_slot_ungroups_and_turning_it_back_regroups_the_source() {
+        let plan = plan_with(&[(10, 0), (10, 1), (10, 2)]);
+        let turned = rotate(&plan, &[SlotId(1)], 1);
+        assert!(!can_regroup(&turned, SourceId(10)));
+
+        let restored = rotate(&turned, &[SlotId(1)], -1);
+        assert!(can_regroup(&restored, SourceId(10)));
     }
 
     #[test]
