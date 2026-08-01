@@ -200,6 +200,41 @@ describe("PageList", () => {
     expect(container.querySelector('[aria-label="Expand 10.pdf"]')).not.toBeNull();
   });
 
+  it("a_selected_row_is_marked_as_selected", async () => {
+    load(source(10, "ungrouped", 2), 2);
+    useUiStore.setState({ selectedSlots: new Set([1]) });
+
+    const container = await renderList();
+    const rows = container.querySelectorAll("article");
+
+    expect(rows[0]?.classList).toContain("border-sky-400");
+    expect(rows[0]?.classList).toContain("ring-2");
+    expect(rows[0]?.classList).toContain("ring-sky-400/60");
+    expect(rows[1]?.classList).not.toContain("border-sky-400");
+    expect(rows[1]?.classList).not.toContain("ring-2");
+    expect(rows[1]?.classList).not.toContain("ring-sky-400/60");
+  });
+
+  it("a_collapsed_group_row_is_selected_only_when_every_page_is", async () => {
+    load(source(10, "grouped", 2), 2);
+    useUiStore.setState({ selectedSlots: new Set([1]) });
+
+    const container = await renderList();
+    const row = container.querySelector("article");
+
+    expect(row?.classList).not.toContain("border-sky-400");
+    expect(row?.classList).not.toContain("ring-2");
+    expect(row?.classList).not.toContain("ring-sky-400/60");
+
+    await act(async () => {
+      useUiStore.setState({ selectedSlots: new Set([1, 2]) });
+    });
+
+    expect(row?.classList).toContain("border-sky-400");
+    expect(row?.classList).toContain("ring-2");
+    expect(row?.classList).toContain("ring-sky-400/60");
+  });
+
   it("sends one reorder command with the grid coordinates after a keyboard drag", async () => {
     const reordered: PlanSnapshot = {
       slots: [

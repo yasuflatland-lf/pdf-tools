@@ -10,7 +10,7 @@ interface CardSurfaceProps {
   columnCount: number;
   rowHeight: number;
   viewMode: "grid" | "list";
-  renderCard: (card: DisplayCard, thumbnailWidth: number) => ReactNode;
+  renderCard: (card: DisplayCard, thumbnailWidth: number, selected: boolean) => ReactNode;
   scrollRef?: RefObject<HTMLDivElement | null>;
   thumbnailWidth: number;
 }
@@ -87,7 +87,7 @@ export function CardSurface({
                           onSelect={(modifiers) => selectCard(cardIndex, modifiers)}
                           selected={selected}
                         >
-                          {renderCard(card, thumbnailWidth)}
+                          {renderCard(card, thumbnailWidth, selected)}
                         </SortableCard>
                       );
                     })}

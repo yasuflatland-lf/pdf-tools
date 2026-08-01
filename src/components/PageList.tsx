@@ -12,8 +12,8 @@ export function PageList() {
       columnCount={1}
       rowHeight={ROW_HEIGHT}
       viewMode="list"
-      renderCard={(card, thumbnailWidth) => (
-        <PageListCard card={card} thumbnailWidth={thumbnailWidth} />
+      renderCard={(card, thumbnailWidth, selected) => (
+        <PageListCard card={card} selected={selected} thumbnailWidth={thumbnailWidth} />
       )}
       thumbnailWidth={THUMBNAIL_WIDTH}
     />
@@ -22,10 +22,11 @@ export function PageList() {
 
 interface PageListCardProps {
   card: DisplayCard;
+  selected: boolean;
   thumbnailWidth: number;
 }
 
-function PageListCard({ card, thumbnailWidth }: PageListCardProps) {
+function PageListCard({ card, selected, thumbnailWidth }: PageListCardProps) {
   const cache = useCardSurfaceCache();
 
   return (
@@ -39,6 +40,7 @@ function PageListCard({ card, thumbnailWidth }: PageListCardProps) {
       pageCount={card.pageCount}
       pageNumber={card.slot.page + 1}
       rotation={card.slot.rotation}
+      selected={selected}
       slotId={card.slot.id}
       thumbnailWidth={thumbnailWidth}
     />
