@@ -12,18 +12,13 @@ impl Rotation {
     }
 
     /// Returns this position after the given number of quarter turns.
-    pub fn turned(self, delta: i8) -> Self {
-        Self::from_quarter_turns(i32::from(self.0) + i32::from(delta))
+    pub fn turned(self, delta: i32) -> Self {
+        Self::from_quarter_turns(i32::from(self.0) + delta)
     }
 
     /// Returns the clockwise quarter-turn count in `0..4`.
     pub fn quarter_turns(self) -> u8 {
         self.0
-    }
-
-    /// Returns whether width and height exchange at this rotation.
-    pub fn swaps_axes(self) -> bool {
-        self.0 % 2 == 1
     }
 }
 
@@ -63,10 +58,43 @@ impl MergePlan {
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
+}
 
-    /// Returns the position of a slot identifier in the plan.
-    pub fn position_of(&self, id: SlotId) -> Option<usize> {
-        self.slots.iter().position(|slot| slot.id == id)
+/// A contiguous span of slot positions in a plan.
+///
+/// Constructing one against a plan is the only place bounds are decided, so a
+/// stale selection from the UI resolves to `None` here rather than turning
+/// into a clamp at each call site. An empty or reversed span is not a span:
+/// it names no slots, so there is nothing to move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlotRange {
+    start: usize,
+    end: usize,
+}
+
+impl SlotRange {
+    /// Resolves a half-open span against a plan, or `None` when it names no
+    /// slots -- reversed, empty, or entirely past the end.
+    pub fn resolve(plan: &MergePlan, start: usize, end: usize) -> Option<Self> {
+        let start = start.min(plan.len());
+        let end = end.min(plan.len());
+        (start < end).then_some(Self { start, end })
+    }
+
+    pub fn start(self) -> usize {
+        self.start
+    }
+
+    pub fn end(self) -> usize {
+        self.end
+    }
+
+    #[allow(
+        clippy::len_without_is_empty,
+        reason = "a SlotRange is non-empty by construction"
+    )]
+    pub fn len(self) -> usize {
+        self.end - self.start
     }
 }
 
@@ -97,25 +125,29 @@ mod tests {
     }
 
     #[test]
-    fn odd_quarter_turn_positions_swap_the_axes() {
-        assert!(!Rotation::from_quarter_turns(0).swaps_axes());
-        assert!(Rotation::from_quarter_turns(1).swaps_axes());
-        assert!(!Rotation::from_quarter_turns(2).swaps_axes());
-        assert!(Rotation::from_quarter_turns(3).swaps_axes());
-    }
-
-    #[test]
-    fn position_of_finds_a_slot_by_id() {
-        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 1)]);
-        assert_eq!(plan.position_of(SlotId(2)), Some(1));
-        assert_eq!(plan.position_of(SlotId(99)), None);
-    }
-
-    #[test]
     fn the_same_page_may_appear_twice_with_distinct_slot_ids() {
         // Duplicating a cover page must be representable.
         let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 0)]);
         assert_eq!(plan.len(), 2);
         assert_ne!(plan.slots()[0].id, plan.slots()[1].id);
+    }
+
+    #[test]
+    fn a_degenerate_span_resolves_to_nothing() {
+        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 1), slot(3, 10, 2)]);
+
+        assert_eq!(SlotRange::resolve(&plan, 1, 1), None);
+        assert_eq!(SlotRange::resolve(&plan, 2, 1), None);
+        assert_eq!(SlotRange::resolve(&plan, 90, 99), None);
+    }
+
+    #[test]
+    fn a_partly_out_of_range_span_is_clamped() {
+        let plan = MergePlan::new(vec![slot(1, 10, 0), slot(2, 10, 1), slot(3, 10, 2)]);
+        let span = SlotRange::resolve(&plan, 1, 99).unwrap();
+
+        assert_eq!(span.start(), 1);
+        assert_eq!(span.end(), 3);
+        assert_eq!(span.len(), 2);
     }
 }

@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
 
-function errorMessage(status: SourceStatusDto): string | null {
+function statusMessage(status: SourceStatusDto): string | null {
   if (status.kind === "ready") {
     return null;
   }
@@ -21,7 +21,7 @@ function errorMessage(status: SourceStatusDto): string | null {
 }
 
 export function ErrorBadge({ status }: { status: SourceStatusDto }): ReactElement | null {
-  const message = errorMessage(status);
+  const message = statusMessage(status);
 
   if (message === null) {
     return null;

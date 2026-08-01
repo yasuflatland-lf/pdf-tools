@@ -10,7 +10,7 @@ describe("computeDropTarget", () => {
   it("translates a group drag into the slot range the backend expects", () => {
     // groups: [A(0..2), B(2..3), C(3..5)] -- drag A after B
     const groups = [g(0, 2), g(2, 1), g(3, 2)];
-    expect(computeDropTarget(groups, 0, 1)).toEqual({ from: [0, 2], to: 1 });
+    expect(computeDropTarget(groups, 0, 1)).toEqual({ fromStart: 0, fromEnd: 2, to: 1 });
   });
 
   it("returns a no-op when a group is dropped on itself", () => {
@@ -20,12 +20,12 @@ describe("computeDropTarget", () => {
 
   it("handles dropping a group at the very end", () => {
     const groups = [g(0, 2), g(2, 1), g(3, 2)];
-    expect(computeDropTarget(groups, 0, 2)).toEqual({ from: [0, 2], to: 3 });
+    expect(computeDropTarget(groups, 0, 2)).toEqual({ fromStart: 0, fromEnd: 2, to: 3 });
   });
 
   it("handles dragging a group backward", () => {
     const groups = [g(0, 2), g(2, 1), g(3, 2)];
-    expect(computeDropTarget(groups, 2, 0)).toEqual({ from: [3, 5], to: 0 });
+    expect(computeDropTarget(groups, 2, 0)).toEqual({ fromStart: 3, fromEnd: 5, to: 0 });
   });
 
   it.each([

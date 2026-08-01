@@ -15,6 +15,7 @@ add, insert, reorder, rotate, delete, undo — is a pure function from one plan 
 | --------------------------- | --------------------------------------------------------------------------------------- |
 | `PageSlot`                  | One output page. Carries its id, source, page index, and clockwise quarter-turn state.  |
 | `MergePlan`                 | The ordered `Vec<PageSlot>`. Vector order _is_ output page order.                       |
+| `SlotRange`                 | A contiguous span of positions in a plan; exists only when it names at least one slot.  |
 | `SourceFile`                | One file the user added: a PDF or an image.                                             |
 | `MergeDocument`             | A `MergePlan` and its sources, with every slot guaranteed to name a listed source.      |
 | Group                       | A contiguous run of slots from one source, drawn as a single card.                      |
@@ -72,7 +73,11 @@ infrastructure → domain. Nothing flows back. Concretely:
   their slots; `Compose` resolves a plan into engine work and reports progress; `PlanSession`
   holds the current document and its undo/redo stacks. `ExpandSources` resolves the folders in a
   picked or dropped selection to the supported files inside them, in natural order, so the same
-  folder yields the same document however it arrived.
+  folder yields the same document however it arrived. `RasterizeSlot` renders one slot to pixels,
+  sending it to the PDF engine or to the image decoder according to its source's kind, so that
+  choice lives beside `Compose`'s rather than in a command. Its `SlotTarget::resolve` is the
+  separate, cheap first half: it copies the one path, kind and page index the engine needs, so a
+  thumbnail request can release the session lock before rendering without copying the plan.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
   `ImageCrateDecoder` (the `image` crate), a PNG encoder, `StdFsWalker`, and `FakePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
@@ -138,7 +143,7 @@ represent only a run whose pages share an orientation.
 ```rust
 pub fn insert_at(plan: &MergePlan, at: usize, slots: &[PageSlot]) -> MergePlan
 pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
-pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan
+pub fn reorder(plan: &MergePlan, from: SlotRange, to: usize) -> MergePlan
 pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan
 ```
 
@@ -148,6 +153,12 @@ recent 100 states and discards older ones, so undoing to exhaustion returns to t
 state, not necessarily to the empty document the session started from. A `PageSlot` is 24 bytes
 (two `u64` ids plus a `u32` page index, padded), so even a 1000-page plan costs ~24 KB per stack
 entry — cheap enough that no diffing scheme is warranted.
+
+`reorder` moves a `SlotRange`, and the only way to hold one is to resolve a span against the plan
+it will move within. A span that names no slots — reversed, empty, or entirely past the end —
+resolves to nothing, so a stale selection arriving from the UI is rejected once at that boundary
+instead of being clamped again at every call site. `PlanSession::reorder` then returns having
+opened no history entry, which leaves both the document and the undo stack as they were.
 
 ## State ownership
 
@@ -223,18 +234,18 @@ breaks the TypeScript build rather than failing silently at runtime.
 
 ## Image pages
 
-An image page is fitted to the **dominant page size**: the most frequent effective size among the
-plan's PDF-backed slots, after each slot's rotation exchanges its axes when necessary. Ties are
-broken by first appearance in the plan, with A4 portrait used when the plan has no PDF pages at
-all. Sizes are classified by rounding each dimension to a cell on a 1 pt lattice, so the
-classification is independent of the order pages were added in.
+An image page is fitted to the **dominant page size**: the most frequent unrotated sheet size among
+the plan's PDF-backed slots. Ties are broken by first appearance in the plan, with A4 portrait used
+when the plan has no PDF pages at all. Sizes are classified by rounding each dimension to a cell on
+a 1 pt lattice, so the classification is independent of the order pages were added in.
 
-The image keeps its aspect ratio and the remaining sheet area is white. Its own rotation does not
-change `fit_to`: composition creates the sheet at the dominant size, places the image through the
-normal path, and then writes the rotation as the PDF page attribute. JPEG passthrough therefore
-remains untouched, and image-backed and PDF-backed slots follow the same turned-sheet rule. For a
-copied PDF page, the slot rotation is added to any rotation already declared by the source. An
-animated GIF contributes its first frame only.
+The image keeps its aspect ratio and the remaining sheet area is white. Image-backed and PDF-backed
+slots follow the same turned-sheet rule: composition creates an unrotated sheet and then writes the
+slot's rotation as the PDF page attribute. Turning both pages turns both sheets; turning only one
+page turns only that sheet, including in an image-only plan. A rotation never changes another
+page's size. JPEG passthrough therefore remains untouched. For a copied PDF page, the slot rotation
+is added to any rotation already declared by the source. An animated GIF contributes its first
+frame only.
 
 ## Error handling
 

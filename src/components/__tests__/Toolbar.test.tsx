@@ -47,7 +47,8 @@ vi.mock("../../lib/tauri-api", () => ({
   supportedExtensions: mocks.supportedExtensions,
   undo: mocks.undo,
 }));
-vi.mock("../../lib/output-dir", () => ({
+vi.mock("../../lib/output-dir", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/output-dir")>()),
   defaultOutputDir: mocks.defaultOutputDir,
   joinPath: mocks.joinPath,
   parentDir: mocks.parentDir,

@@ -1,8 +1,6 @@
-use std::ops::Range;
-
 use super::{
     ids::SlotId,
-    plan::{MergePlan, PageSlot},
+    plan::{MergePlan, PageSlot, SlotRange},
 };
 
 /// Inserts slots at `at`. Out-of-range positions are clamped to the end rather
@@ -28,7 +26,7 @@ pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan {
 
 /// Turns the named slots, leaving every other slot untouched. Unknown ids are
 /// ignored, like every other operation over slot ids.
-pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan {
+pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i32) -> MergePlan {
     MergePlan::new(
         plan.slots()
             .iter()
@@ -43,23 +41,20 @@ pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan {
     )
 }
 
-/// Moves the contiguous range `from` so that it begins at index `to` **in the
-/// sequence that remains after the range is lifted out**. Both bounds are
-/// clamped. This definition removes the usual ambiguity about whether `to`
+/// Moves the span `from` so that it begins at index `to` **in the sequence
+/// that remains after the span is lifted out**. `to` is clamped to that
+/// sequence. This definition removes the usual ambiguity about whether `to`
 /// refers to the pre- or post-removal indexing.
-pub fn reorder(plan: &MergePlan, from: Range<usize>, to: usize) -> MergePlan {
-    let start = from.start.min(plan.len());
-    let end = from.end.min(plan.len());
-    if start >= end {
-        return plan.clone();
-    }
-
+pub fn reorder(plan: &MergePlan, from: SlotRange, to: usize) -> MergePlan {
     let mut remaining = Vec::with_capacity(plan.len());
-    remaining.extend_from_slice(&plan.slots()[..start]);
-    remaining.extend_from_slice(&plan.slots()[end..]);
+    remaining.extend_from_slice(&plan.slots()[..from.start()]);
+    remaining.extend_from_slice(&plan.slots()[from.end()..]);
 
     let to = to.min(remaining.len());
-    remaining.splice(to..to, plan.slots()[start..end].iter().cloned());
+    remaining.splice(
+        to..to,
+        plan.slots()[from.start()..from.end()].iter().cloned(),
+    );
     MergePlan::new(remaining)
 }
 
@@ -121,6 +116,15 @@ mod tests {
     }
 
     #[test]
+    fn rotate_accepts_a_negative_delta() {
+        let plan = plan_of(&[1]);
+        let negative = rotate(&plan, &[SlotId(1)], -1);
+
+        assert_eq!(negative.slots()[0].rotation.quarter_turns(), 3);
+        assert_eq!(negative, rotate(&plan, &[SlotId(1)], 3));
+    }
+
+    #[test]
     fn four_turns_restore_the_original_rotation() {
         let original = plan_of(&[1]);
         let once = rotate(&original, &[SlotId(1)], 1);
@@ -141,40 +145,34 @@ mod tests {
     #[test]
     fn reorder_moves_a_range_forward() {
         // Lift [1,2] out -> [3,4,5]; insert at index 2 -> [3,4,1,2,5]
-        let new = reorder(&plan_of(&[1, 2, 3, 4, 5]), 0..2, 2);
+        let plan = plan_of(&[1, 2, 3, 4, 5]);
+        let from = SlotRange::resolve(&plan, 0, 2).unwrap();
+        let new = reorder(&plan, from, 2);
         assert_eq!(ids_of(&new), vec![3, 4, 1, 2, 5]);
     }
 
     #[test]
     fn reorder_moves_a_range_backward() {
         // Lift [4,5] out -> [1,2,3]; insert at index 1 -> [1,4,5,2,3]
-        let new = reorder(&plan_of(&[1, 2, 3, 4, 5]), 3..5, 1);
+        let plan = plan_of(&[1, 2, 3, 4, 5]);
+        let from = SlotRange::resolve(&plan, 3, 5).unwrap();
+        let new = reorder(&plan, from, 1);
         assert_eq!(ids_of(&new), vec![1, 4, 5, 2, 3]);
     }
 
     #[test]
     fn reorder_to_the_same_position_is_a_no_op() {
         let plan = plan_of(&[1, 2, 3]);
-        assert_eq!(reorder(&plan, 1..2, 1), plan);
+        let from = SlotRange::resolve(&plan, 1, 2).unwrap();
+        assert_eq!(reorder(&plan, from, 1), plan);
     }
 
     #[test]
     fn reorder_clamps_out_of_range_bounds() {
         let plan = plan_of(&[1, 2, 3]);
-        let new = reorder(&plan, 0..1, 99);
+        let from = SlotRange::resolve(&plan, 0, 1).unwrap();
+        let new = reorder(&plan, from, 99);
         assert_eq!(ids_of(&new), vec![2, 3, 1]);
-    }
-
-    #[test]
-    fn reorder_leaves_the_plan_alone_for_a_degenerate_range() {
-        // A stale UI selection may yield an empty, reversed, or wholly
-        // out-of-range span. None of these may panic.
-        let plan = plan_of(&[1, 2, 3]);
-        // Built field-by-field because a reversed literal range is a lint error.
-        let reversed = Range { start: 2, end: 1 };
-        assert_eq!(reorder(&plan, 1..1, 0), plan);
-        assert_eq!(reorder(&plan, reversed, 0), plan);
-        assert_eq!(reorder(&plan, 90..99, 0), plan);
     }
 
     #[test]
@@ -185,7 +183,6 @@ mod tests {
             vec![9]
         );
         assert_eq!(remove(&empty, &[SlotId(1)]), empty);
-        assert_eq!(reorder(&empty, 0..3, 7), empty);
         assert_eq!(rotate(&empty, &[SlotId(1)], 1), empty);
     }
 
@@ -199,7 +196,10 @@ mod tests {
             let plan = plan_of(&ids);
             let start = start.min(len - 1);
             let end = (start + take).min(len);
-            let new = reorder(&plan, start..end, to);
+            let Some(from) = SlotRange::resolve(&plan, start, end) else {
+                return Ok(());
+            };
+            let new = reorder(&plan, from, to);
             let mut before = ids_of(&plan); before.sort_unstable();
             let mut after = ids_of(&new);  after.sort_unstable();
             prop_assert_eq!(before, after);
