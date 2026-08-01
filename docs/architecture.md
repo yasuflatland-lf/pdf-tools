@@ -79,7 +79,8 @@ infrastructure → domain. Nothing flows back. Concretely:
   separate, cheap first half: it copies the one path, kind and page index the engine needs, so a
   thumbnail request can release the session lock before rendering without copying the plan.
 - **`infrastructure` implements the ports.** `PdfiumEngine` (PDFium via `pdfium-render`),
-  `ImageCrateDecoder` (the `image` crate), a PNG encoder, `StdFsWalker`, and `FakePdfEngine`.
+  `ImageCrateDecoder` (the `image` crate), a PNG encoder, `StdFsWalker`, `FakePdfEngine`, and
+  `UnavailablePdfEngine`.
 - **`presentation` is thin.** Each Tauri command locks the session, calls one session method or
   use case, and returns a `PlanSnapshot` DTO. The command bodies are split into `*_inner`
   functions that take `&AppState`, so they are testable without a webview.
