@@ -1,24 +1,13 @@
 import { RotateCcw, RotateCw } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
-import type { ThumbnailCache } from "../lib/thumbnail-cache";
 import { countLabel } from "../lib/format";
 import { ErrorBadge } from "./ErrorBadge";
+import type { CardViewProps } from "./card/CardProps";
 import { Notice } from "./card/Notice";
 import { ThumbnailFrame } from "./card/ThumbnailFrame";
 
-interface PageCardProps {
-  cache: ThumbnailCache;
-  collapsed: boolean;
-  fileName: string;
-  pageCount: number;
-  pageNumber: number;
-  rotation: number;
-  slotId: number;
-  thumbnailWidth: number;
-  onRotate: (delta: number) => void;
-  selected?: boolean;
-}
+type Props = CardViewProps;
 
 /**
  * The shared card chrome: a fixed-height preview area above the file name and a
@@ -58,9 +47,10 @@ export function PageCard({
   rotation,
   slotId,
   thumbnailWidth,
+  onToggle: _onToggle, // GroupCard positions the grid toggle outside PageCard.
   onRotate,
   selected,
-}: PageCardProps) {
+}: Props) {
   const [thumbnail, failed] = ThumbnailFrame({
     cache,
     fileName,
@@ -87,7 +77,7 @@ export function PageCard({
             <button
               aria-label={`Rotate left ${fileName}`}
               className="grid size-8 place-items-center rounded-md border border-slate-600 bg-slate-900/90 text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-              onClick={() => onRotate(-1)}
+              onClick={() => onRotate?.(-1)}
               onKeyDown={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               title="Rotate left"
@@ -98,7 +88,7 @@ export function PageCard({
             <button
               aria-label={`Rotate right ${fileName}`}
               className="grid size-8 place-items-center rounded-md border border-slate-600 bg-slate-900/90 text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-              onClick={() => onRotate(1)}
+              onClick={() => onRotate?.(1)}
               onKeyDown={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
               title="Rotate right"
