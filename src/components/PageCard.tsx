@@ -6,6 +6,7 @@ import { ErrorBadge } from "./ErrorBadge";
 import type { CardViewProps } from "./card/CardProps";
 import { Notice } from "./card/Notice";
 import { ThumbnailFrame } from "./card/ThumbnailFrame";
+import { CARD_CONTROL_CLASS_NAME } from "./card/ToggleButton";
 
 type Props = CardViewProps;
 
@@ -118,9 +119,11 @@ export function PageCard({
  */
 export function SourceErrorCard({
   fileName,
+  onDismiss,
   status,
 }: {
   fileName: string;
+  onDismiss: () => void;
   status: SourceStatusDto;
 }): ReactElement {
   return (
@@ -128,11 +131,23 @@ export function SourceErrorCard({
       className="border-amber-700/60 opacity-60"
       fileName={fileName}
       preview={
-        <div className="flex h-24 w-20 flex-col items-center justify-center gap-2 rounded border border-amber-700/60 bg-amber-950/40 text-center text-xs font-medium text-amber-100">
-          <span className="text-2xl" aria-hidden="true">
-            !
-          </span>
-          <span>Not merged</span>
+        <div className="flex items-center gap-3">
+          <div className="flex h-24 w-20 flex-col items-center justify-center gap-2 rounded border border-amber-700/60 bg-amber-950/40 text-center text-xs font-medium text-amber-100">
+            <span className="text-2xl" aria-hidden="true">
+              !
+            </span>
+            <span>Not merged</span>
+          </div>
+          {/* The keydown is stopped so the control never steers the shell behind it. */}
+          <button
+            aria-label={`Remove ${fileName}`}
+            className={CARD_CONTROL_CLASS_NAME}
+            onClick={onDismiss}
+            onKeyDown={(event) => event.stopPropagation()}
+            type="button"
+          >
+            Remove
+          </button>
         </div>
       }
       caption={<ErrorBadge status={status} />}

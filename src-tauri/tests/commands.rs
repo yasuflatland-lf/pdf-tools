@@ -12,7 +12,8 @@ use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
     add_sources_inner, compose_inner, expand_paths_inner, rasterize_slot_inner, redo_inner,
-    remove_slots_inner, reorder_inner, rotate_slots_inner, supported_extensions_inner, undo_inner,
+    remove_slots_inner, remove_source_inner, reorder_inner, rotate_slots_inner,
+    supported_extensions_inner, undo_inner,
 };
 use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
@@ -315,6 +316,37 @@ fn undo_flags_reflect_the_history() {
     assert!(!snapshot.can_redo);
     let snapshot = undo_inner(&state).unwrap();
     assert!(snapshot.can_redo);
+}
+
+#[test]
+fn remove_source_returns_a_snapshot_without_that_source() {
+    let state = state_with_pdf(2);
+    let source_id = snapshot_of(&state).sources[0].id;
+
+    let snapshot = remove_source_inner(&state, source_id).unwrap();
+
+    assert!(snapshot.sources.is_empty());
+    assert!(snapshot.slots.is_empty());
+    assert!(snapshot.can_undo);
+}
+
+#[test]
+fn removing_an_unknown_source_returns_the_unchanged_snapshot_without_history() {
+    // The document has to hold something for the comparison below to protect
+    // anything: against an empty one, a command that wiped the plan would pass.
+    let state = state_with_pdf_and_image();
+    let before = snapshot_of(&state);
+    assert_eq!(before.sources.len(), 2);
+    assert_eq!(before.slots.len(), 4);
+
+    let snapshot = remove_source_inner(&state, u64::MAX).unwrap();
+
+    assert_eq!(snapshot, before);
+    // The no-op parked no history entry, so this single Undo reaches the image
+    // add rather than undoing the removal that never happened.
+    let undone = undo_inner(&state).unwrap();
+    assert_eq!(undone.sources.len(), 1);
+    assert_eq!(undone.slots.len(), 3);
 }
 
 #[test]

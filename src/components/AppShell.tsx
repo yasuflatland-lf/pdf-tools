@@ -1,5 +1,5 @@
 import type { SourceFileDto } from "../bindings/SourceFileDto";
-import { removeSlots } from "../lib/tauri-api";
+import { removeSlots, removeSource } from "../lib/tauri-api";
 import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
@@ -26,7 +26,15 @@ function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
     >
       {sources.map((source) => (
         <li key={source.id}>
-          <SourceErrorCard fileName={source.file_name} status={source.status} />
+          <SourceErrorCard
+            fileName={source.file_name}
+            onDismiss={() => {
+              void removeSource(source.id)
+                .then((snapshot) => usePlanStore.getState().setSnapshot(snapshot))
+                .catch((error: unknown) => console.error("remove source failed", error));
+            }}
+            status={source.status}
+          />
         </li>
       ))}
     </ul>

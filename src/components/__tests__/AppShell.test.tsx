@@ -5,11 +5,12 @@ import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { AppShell } from "../AppShell";
 
-const { invoke, onDragDropEvent, open, removeSlots } = vi.hoisted(() => ({
+const { invoke, onDragDropEvent, open, removeSlots, removeSource } = vi.hoisted(() => ({
   invoke: vi.fn(),
   onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
   open: vi.fn(),
   removeSlots: vi.fn(),
+  removeSource: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -20,6 +21,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn(), open }));
 vi.mock("../../lib/tauri-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tauri-api")>()),
   removeSlots,
+  removeSource,
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -99,6 +101,7 @@ describe("AppShell", () => {
     // A cancelled picker keeps a click from running the real add procedure.
     open.mockResolvedValue(null);
     removeSlots.mockReset();
+    removeSource.mockReset();
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: vi.fn(() => "blob:thumbnail"),
@@ -224,6 +227,39 @@ describe("AppShell", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(removeSlots).not.toHaveBeenCalled();
+  });
+
+  it("removes an unusable source from its card and installs the returned snapshot", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [],
+      sources: [
+        {
+          id: 42,
+          path: "/documents/locked.pdf",
+          file_name: "locked.pdf",
+          kind: "pdf",
+          grouping: "ungrouped",
+          page_count: 0,
+          status: { kind: "encrypted" },
+        },
+      ],
+      can_undo: false,
+      can_redo: false,
+    });
+    const returnedSnapshot = {
+      slots: [],
+      sources: [],
+      can_undo: true,
+      can_redo: false,
+    };
+    removeSource.mockResolvedValue(returnedSnapshot);
+    const container = await renderShell();
+
+    await click(getButton(container, "Remove locked.pdf"));
+
+    expect(removeSource).toHaveBeenCalledWith(42);
+    expect(usePlanStore.getState().sources).toEqual([]);
+    expect(usePlanStore.getState().canUndo).toBe(true);
   });
 
   it("shows the source notice above the document and dismisses it", async () => {

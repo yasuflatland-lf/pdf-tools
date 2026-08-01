@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use pdf_tools_core::application::compose::{Compose, ComposeError, ProgressSink};
 use pdf_tools_core::application::expand_sources::ExpandSources;
 use pdf_tools_core::application::rasterize_slot::{RasterizeSlot, SlotTarget};
-use pdf_tools_core::domain::ids::SlotId;
+use pdf_tools_core::domain::ids::{SlotId, SourceId};
 use pdf_tools_core::domain::source::SourceKind;
 use pdf_tools_core::infrastructure::png::encode_png;
 use tauri::ipc::Response;
@@ -101,6 +101,17 @@ pub fn remove_slots(
     slot_ids: Vec<u64>,
 ) -> Result<PlanSnapshot, String> {
     remove_slots_inner(&state, slot_ids)
+}
+
+pub fn remove_source_inner(state: &AppState, source_id: u64) -> Result<PlanSnapshot, String> {
+    let mut session = state.session();
+    session.remove_source(SourceId(source_id));
+    Ok(PlanSnapshot::from_session(&session))
+}
+
+#[tauri::command]
+pub fn remove_source(state: State<'_, AppState>, source_id: u64) -> Result<PlanSnapshot, String> {
+    remove_source_inner(&state, source_id)
 }
 
 pub fn rotate_slots_inner(
