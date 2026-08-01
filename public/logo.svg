@@ -1,0 +1,12 @@
+<svg viewBox="0 5 110 110" width="110" height="110" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    The shield reaches from y=15 to y=105, so the viewBox is offset to hold it
+    dead centre: cropping it here would crop every generated app icon too.
+    Paths stay in absolute commands; src/__tests__/branding.test.ts measures them.
+  -->
+  <path d="M 25 15 L 60 15 L 85 40 L 85 65 C 85 85 65 100 55 105 C 45 100 25 85 25 65 Z" fill="#ED1C24"/>
+  <!-- The darker fold at the top right -->
+  <path d="M 60 15 L 60 40 L 85 40 Z" fill="#B3151B"/>
+  <!-- The centred cross -->
+  <path d="M 51 46 L 59 46 L 59 54 L 67 54 L 67 62 L 59 62 L 59 70 L 51 70 L 51 62 L 43 62 L 43 54 L 51 54 Z" fill="#FFF"/>
+</svg>

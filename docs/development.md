@@ -50,7 +50,17 @@ committed — it is large, platform-specific, and reproducibly re-fetched. CI ru
 | `mise run test`            | `cargo nextest run --workspace`, `pnpm vitest run`                                  |
 | `pnpm exec tsc --noEmit`   | Frontend type check (a separate CI gate — oxlint cannot see type errors)            |
 | `cargo build --workspace`  | Compile both crates                                                                 |
+| `mise run gen-icons`       | Rasterize `public/logo.svg` into the committed `src-tauri/icons/` bundle set        |
 | `scripts/make-fixtures.sh` | Regenerate the git-ignored PDF test fixtures                                        |
+
+## Branding
+
+`public/logo.svg` holds the only copy of the artwork: the favicon links to it, the toolbar renders
+it, and `mise run gen-icons` rasterizes it into `src-tauri/icons/`. Those PNG/ICNS/ICO files are the
+one set of generated artefacts kept under version control, because the bundler reads them straight
+from the working tree — edit the SVG and re-run the task rather than touching them by hand. The
+shield has to sit inside the `viewBox` or every icon crops it, which `src/__tests__/branding.test.ts`
+guards.
 
 ## Testing policy
 

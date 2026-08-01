@@ -7,7 +7,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Interface
+
+- The app carries its own shield logo instead of the stock Tauri mark: the bundle icons for macOS
+  and Windows, the window favicon, and a mark at the head of the toolbar. All three read
+  `public/logo.svg`, and `mise run gen-icons` rasterizes that one file into `src-tauri/icons/`.
+- The artwork drew the shield down to y=105 inside a `viewBox` of 100, which cropped its point in
+  every icon size. The `viewBox` now frames the whole shield, and a test fails if any path leaves
+  it again.
 
 ## [0.2.0] — 2026-08-01
 
