@@ -1,14 +1,7 @@
-use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use pdf_tools_core::application::errors::PdfError;
-use pdf_tools_core::application::ports::{
-    ComposePlan, DirectoryWalker, ImageDecoder, MergeReport, PdfEngine,
-};
+use pdf_tools_core::application::ports::{DirectoryWalker, ImageDecoder, PdfEngine};
 use pdf_tools_core::application::session::PlanSession;
-use pdf_tools_core::domain::geometry::{RasterImage, RasterSpec};
-use pdf_tools_core::domain::ids::PageIndex;
-use pdf_tools_core::domain::source::DocumentInfo;
 use pdf_tools_core::infrastructure::fs_walker::StdFsWalker;
 
 /// The Tauri-managed application state.
@@ -76,40 +69,5 @@ impl AppState {
 
     pub fn walker(&self) -> &dyn DirectoryWalker {
         self.walker.as_ref()
-    }
-}
-
-/// Stands in for the PDF engine when the PDFium library failed to load, so the
-/// app still starts and reports the reason on every attempted operation.
-pub struct UnavailablePdfEngine {
-    reason: String,
-}
-
-impl UnavailablePdfEngine {
-    pub fn new(reason: String) -> Self {
-        Self { reason }
-    }
-
-    fn error(&self) -> PdfError {
-        PdfError::EngineUnavailable(self.reason.clone())
-    }
-}
-
-impl PdfEngine for UnavailablePdfEngine {
-    fn probe(&self, _src: &Path) -> Result<DocumentInfo, PdfError> {
-        Err(self.error())
-    }
-
-    fn rasterize(
-        &self,
-        _src: &Path,
-        _page: PageIndex,
-        _spec: RasterSpec,
-    ) -> Result<RasterImage, PdfError> {
-        Err(self.error())
-    }
-
-    fn compose(&self, _plan: &ComposePlan, _dest: &Path) -> Result<MergeReport, PdfError> {
-        Err(self.error())
     }
 }

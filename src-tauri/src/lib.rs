@@ -5,11 +5,12 @@ use pdf_tools_core::application::ports::PdfEngine;
 use pdf_tools_core::infrastructure::fs_walker::StdFsWalker;
 use pdf_tools_core::infrastructure::image_decoder::ImageCrateDecoder;
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
+use pdf_tools_core::infrastructure::unavailable::UnavailablePdfEngine;
 use presentation::commands::{
     add_sources, compose, expand_paths, rasterize_slot, redo, remove_slots, remove_source, reorder,
     rotate_slots, supported_extensions, undo,
 };
-use presentation::state::{AppState, UnavailablePdfEngine};
+use presentation::state::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
