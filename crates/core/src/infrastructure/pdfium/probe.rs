@@ -42,10 +42,7 @@ impl PdfEngine for PdfiumEngine {
                 page_sizes.push(page_size);
             }
 
-            debug_assert_eq!(page_sizes.len() as u32, page_count);
-
             Ok(DocumentInfo {
-                page_count,
                 page_sizes,
                 encrypted: false,
             })
