@@ -215,7 +215,12 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid", modalOpen: false, selectedSlots: new Set() });
+    useUiStore.setState({
+      viewMode: "grid",
+      modalOpen: false,
+      selectedSlots: new Set(),
+      isIngesting: false,
+    });
   });
 
   afterEach(async () => {
@@ -228,7 +233,12 @@ describe("Toolbar", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ viewMode: "grid", modalOpen: false, selectedSlots: new Set() });
+    useUiStore.setState({
+      viewMode: "grid",
+      modalOpen: false,
+      selectedSlots: new Set(),
+      isIngesting: false,
+    });
     vi.restoreAllMocks();
   });
 
@@ -356,6 +366,18 @@ describe("Toolbar", () => {
 
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(mocks.open).toHaveBeenCalledWith({ directory: true });
+  });
+
+  it("locks the add menu while an add is in flight", async () => {
+    const container = await renderToolbar();
+
+    await act(async () => {
+      useUiStore.getState().setIngesting(true);
+    });
+
+    // This trigger is the only picker in the window, so it is where a second
+    // add has to be turned away while the first one is still running.
+    expect(getButton(container, "Add files or a folder").disabled).toBe(true);
   });
 
   it("switches between grid and list views and reports the active mode", async () => {
