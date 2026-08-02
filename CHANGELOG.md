@@ -7,6 +7,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Interface
+
+- **The empty state drops its own `Choose files…` and `Choose folder…` buttons.** They arrived to
+  give anyone who cannot comfortably drag a way into the app, and the toolbar's `Add` menu — added
+  in the same release, on screen at that same moment and for the rest of the session — already
+  serves that purpose without unmounting once a slot exists. Two controls for one action in a
+  window this small only asked the user to pick between them, so the empty state is a drop prompt
+  again and the menu is the one control that opens a picker.
+
 ## [0.5.0] — 2026-08-02
 
 Nothing new arrives on the toolbar. This release settles what the previous ones exposed: an odd

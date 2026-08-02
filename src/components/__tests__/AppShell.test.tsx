@@ -181,38 +181,14 @@ describe("AppShell", () => {
     expect(container.querySelector('[data-view-mode="list"]')).toBeNull();
   });
 
-  it("offers both pickers in the empty state", async () => {
+  it("carries no picker of its own in the empty state", async () => {
     const container = await renderShell();
 
-    expect(getButton(container, "Choose files…").disabled).toBe(false);
-    expect(getButton(container, "Choose folder…").disabled).toBe(false);
-  });
-
-  it("sends each picker to its own dialog", async () => {
-    const container = await renderShell();
-
-    await click(getButton(container, "Choose files…"));
-
-    expect(open).toHaveBeenLastCalledWith({
-      multiple: true,
-      filters: [{ name: "PDFs and images", extensions: ["pdf", "jpg", "jpeg", "png", "gif"] }],
-    });
-
-    await click(getButton(container, "Choose folder…"));
-
-    expect(open).toHaveBeenLastCalledWith({ directory: true });
-    expect(open).toHaveBeenCalledTimes(2);
-  });
-
-  it("disables both pickers while an add is in flight", async () => {
-    const container = await renderShell();
-
-    await act(async () => {
-      useUiStore.getState().setIngesting(true);
-    });
-
-    expect(getButton(container, "Choose files…").disabled).toBe(true);
-    expect(getButton(container, "Choose folder…").disabled).toBe(true);
+    // The toolbar's Add menu is the one control that opens a picker, so the
+    // empty state says where files go and nothing more.
+    expect(container.textContent).toContain("Drop PDFs or images here");
+    expect(container.textContent).not.toContain("Choose files…");
+    expect(container.textContent).not.toContain("Choose folder…");
   });
 
   it("leaves Delete alone when the selection is empty", async () => {

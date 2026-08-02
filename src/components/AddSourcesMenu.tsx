@@ -18,11 +18,11 @@ function moveFocus(container: HTMLElement, step: number) {
 }
 
 /**
- * The toolbar's persistent way into the document.
+ * The one control that opens a picker, and with a drop the only way into the
+ * document.
  *
- * Both actions fold into a menu here purely for room. The empty state shows
- * them unfolded, so by the time anyone reaches this control they already know
- * a folder is an option -- folding costs a click, not discoverability.
+ * Both actions fold into a menu purely for room: the toolbar keeps a single
+ * slot for adding, and a folder needs a picker of its own.
  */
 export function AddSourcesMenu() {
   const [isOpen, setIsOpen] = useState(false);
