@@ -3,10 +3,16 @@ import type { ReactElement, ReactNode } from "react";
 import type { SourceStatusDto } from "../bindings/SourceStatusDto";
 import { countLabel } from "../lib/format";
 import { ErrorBadge } from "./ErrorBadge";
+import { CardControl, CardIconControl } from "./card/CardControl";
 import type { CardViewProps } from "./card/CardProps";
 import { Notice } from "./card/Notice";
 import { ThumbnailFrame } from "./card/ThumbnailFrame";
-import { CARD_CONTROL_CLASS_NAME } from "./card/ToggleButton";
+
+/** Left before right, which is the order the toolbar draws them in too. */
+const ROTATIONS = [
+  { delta: -1, icon: RotateCcw, direction: "left" },
+  { delta: 1, icon: RotateCw, direction: "right" },
+] as const;
 
 type Props = CardViewProps;
 
@@ -76,28 +82,15 @@ export function PageCard({
           </div>
           {onRotate && (
             <div className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-              <button
-                aria-label={`Rotate left ${fileName}`}
-                className="grid size-8 place-items-center rounded-md border border-slate-600 bg-slate-900/90 text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-                onClick={() => onRotate(-1)}
-                onKeyDown={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-                title="Rotate left"
-                type="button"
-              >
-                <RotateCcw aria-hidden="true" size={16} strokeWidth={1.8} />
-              </button>
-              <button
-                aria-label={`Rotate right ${fileName}`}
-                className="grid size-8 place-items-center rounded-md border border-slate-600 bg-slate-900/90 text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-                onClick={() => onRotate(1)}
-                onKeyDown={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-                title="Rotate right"
-                type="button"
-              >
-                <RotateCw aria-hidden="true" size={16} strokeWidth={1.8} />
-              </button>
+              {ROTATIONS.map(({ delta, icon, direction }) => (
+                <CardIconControl
+                  key={direction}
+                  icon={icon}
+                  label={`Rotate ${direction} ${fileName}`}
+                  onPress={() => onRotate(delta)}
+                  title={`Rotate ${direction}`}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -138,16 +131,9 @@ export function SourceErrorCard({
             </span>
             <span>Not merged</span>
           </div>
-          {/* The keydown is stopped so the control never steers the shell behind it. */}
-          <button
-            aria-label={`Remove ${fileName}`}
-            className={CARD_CONTROL_CLASS_NAME}
-            onClick={onDismiss}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
+          <CardControl label={`Remove ${fileName}`} onPress={onDismiss}>
             Remove
-          </button>
+          </CardControl>
         </div>
       }
       caption={<ErrorBadge status={status} />}
