@@ -72,9 +72,9 @@ async function ingest(paths: string[], label: string | null): Promise<void> {
 }
 
 /**
- * The one way into the document. The empty state, the toolbar and the drop
- * listener all come through here, so a folder cannot behave one way when it is
- * dropped and another when it is picked.
+ * The one way into the document. The toolbar menu and the drop listener both
+ * come through here, so a folder cannot behave one way when it is dropped and
+ * another when it is picked.
  */
 export function useAddSources(): AddSourcesController {
   const isIngesting = useUiStore((state) => state.isIngesting);
