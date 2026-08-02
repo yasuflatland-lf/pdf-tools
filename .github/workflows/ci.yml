@@ -56,12 +56,16 @@ jobs:
       - name: Run Rust tests with coverage
         run: cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
 
+      # A silently dropped upload leaves Codecov reporting the previous commit's
+      # numbers, which reads as a passing coverage report rather than a missing
+      # one. CODECOV_TOKEN is set on this repository, so a failed upload means a
+      # real problem and must fail the job — hence no `continue-on-error` here.
       - name: Upload Rust coverage to Codecov
-        continue-on-error: true
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: lcov.info
-          fail_ci_if_error: false
+          flags: rust
+          fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
 
   frontend:
@@ -95,5 +99,16 @@ jobs:
       - name: Check unused frontend code
         run: pnpm knip
 
-      - name: Run frontend tests
-        run: pnpm vitest run
+      - name: Run frontend tests with coverage
+        run: pnpm run test:coverage
+
+      # Same reasoning as the Rust upload above: a dropped upload would leave
+      # Codecov serving the previous commit's frontend number, so it must fail
+      # the job rather than pass quietly.
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: coverage/lcov.info
+          flags: frontend
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

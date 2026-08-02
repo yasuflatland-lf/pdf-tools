@@ -1,40 +1,32 @@
-import type { ComponentProps } from "react";
+import type { CardViewProps } from "./card/CardProps";
+import { ToggleButton } from "./card/ToggleButton";
 import { PageCard } from "./PageCard";
 
-type GroupCardProps = ComponentProps<typeof PageCard> & {
-  onToggle?: () => void;
-};
+type Props = CardViewProps;
 
-export function GroupCard({ onToggle, ...pageCardProps }: GroupCardProps) {
+export function GroupCard({ onToggle, ...pageCardProps }: Props) {
   const { collapsed, fileName } = pageCardProps;
 
   return (
-    <div className="relative">
+    // Both toggles sit outside `PageCard`, so the pointer can rest on one of
+    // them without entering the hover marker inside the card. Marking the
+    // element that holds the card and the toggle together reveals the rotate
+    // buttons wherever on the card the pointer is -- `group-hover` matches any
+    // marked ancestor, so the inner marker keeps working for a card with no
+    // toggle at all.
+    <div className="group relative">
       <PageCard {...pageCardProps} />
-      {onToggle &&
-        (collapsed ? (
-          <button
-            aria-label={`Expand ${fileName}`}
-            className="absolute inset-x-0 top-0 flex h-60 items-start justify-end rounded-t-xl p-2 text-xs font-medium text-slate-200 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            <span className="rounded-md border border-slate-600 bg-slate-900/90 px-2 py-1 shadow">
-              Expand
-            </span>
-          </button>
-        ) : (
-          <button
-            aria-label={`Collapse ${fileName}`}
-            className="absolute top-2 right-2 rounded-md border border-slate-600 bg-slate-900/90 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Collapse
-          </button>
-        ))}
+      {onToggle && (
+        // A badge rather than a blanket over the preview: the preview is most
+        // of the card, and a control covering it would take every click meant
+        // to select the card -- including the Shift-click that ends a range.
+        <ToggleButton
+          collapsed={collapsed}
+          fileName={fileName}
+          onToggle={onToggle}
+          className="absolute top-2 left-2"
+        />
+      )}
     </div>
   );
 }

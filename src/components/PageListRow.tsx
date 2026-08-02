@@ -1,19 +1,10 @@
-import { useEffect, useState } from "react";
-import type { SourceStatusDto } from "../bindings/SourceStatusDto";
-import { countLabel, statusLabel } from "../lib/format";
-import type { ThumbnailCache } from "../lib/thumbnail-cache";
+import { countLabel } from "../lib/format";
+import type { CardViewProps } from "./card/CardProps";
+import { Notice } from "./card/Notice";
+import { ThumbnailFrame } from "./card/ThumbnailFrame";
+import { ToggleButton } from "./card/ToggleButton";
 
-interface PageListRowProps {
-  cache: ThumbnailCache;
-  collapsed: boolean;
-  fileName: string;
-  onToggle?: () => void;
-  pageCount: number;
-  pageNumber: number;
-  slotId: number;
-  status?: SourceStatusDto;
-  thumbnailWidth: number;
-}
+type Props = CardViewProps;
 
 export function PageListRow({
   cache,
@@ -22,53 +13,31 @@ export function PageListRow({
   onToggle,
   pageCount,
   pageNumber,
+  rotation,
+  onRotate: _onRotate, // List view has no room for the grid's hover controls.
+  selected,
   slotId,
-  status,
   thumbnailWidth,
-}: PageListRowProps) {
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>();
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setThumbnailUrl(undefined);
-    setFailed(false);
-
-    void cache
-      .get(slotId, thumbnailWidth)
-      .then((url) => {
-        if (active && url) {
-          setThumbnailUrl(url);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setFailed(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [cache, slotId, thumbnailWidth]);
+}: Props) {
+  const [thumbnail, failed] = ThumbnailFrame({
+    cache,
+    fileName,
+    rotation,
+    slotId,
+    thumbnailWidth,
+    placeholderClassName: "h-14 w-11",
+  });
 
   return (
-    <article className="flex h-24 items-center gap-4 overflow-hidden rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
+    <article
+      className={`flex h-24 items-center gap-4 overflow-hidden rounded-xl border bg-slate-900 px-3 py-2 ${
+        selected ? "border-sky-400 ring-2 ring-sky-400/60" : "border-slate-800"
+      }`}
+    >
       <div className="grid h-20 w-16 shrink-0 place-items-center overflow-hidden rounded bg-slate-800/70">
-        {thumbnailUrl ? (
-          <img
-            className="h-full w-full object-contain"
-            src={thumbnailUrl}
-            alt={`Thumbnail for ${fileName}`}
-          />
-        ) : (
-          <div
-            className="h-14 w-11 rounded border border-slate-600 bg-slate-700"
-            role="img"
-            aria-label={failed ? "Thumbnail unavailable" : "Loading thumbnail"}
-          />
-        )}
+        {thumbnail}
       </div>
+      {failed && <Notice>Thumbnail unavailable</Notice>}
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-slate-100" title={fileName}>
           {fileName}
@@ -77,31 +46,14 @@ export function PageListRow({
           {collapsed ? countLabel(pageCount, "page") : `Page ${pageNumber}`}
         </p>
       </div>
-      <p className="shrink-0 text-sm text-slate-400">
-        {status ? statusLabel(status) : "Unknown status"}
-      </p>
-      {onToggle &&
-        (collapsed ? (
-          <button
-            aria-label={`Expand ${fileName}`}
-            className="shrink-0 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Expand
-          </button>
-        ) : (
-          <button
-            aria-label={`Collapse ${fileName}`}
-            className="shrink-0 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs font-medium text-slate-200 shadow hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
-            onClick={onToggle}
-            onKeyDown={(event) => event.stopPropagation()}
-            type="button"
-          >
-            Collapse
-          </button>
-        ))}
+      {onToggle && (
+        <ToggleButton
+          collapsed={collapsed}
+          fileName={fileName}
+          onToggle={onToggle}
+          className="shrink-0"
+        />
+      )}
     </article>
   );
 }

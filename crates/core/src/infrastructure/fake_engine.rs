@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::application::errors::{ImageError, PdfError};
-use crate::application::ports::{ComposePlan, ImageDecoder, MergeReport, PdfEngine};
+use crate::application::errors::{ImageError, PdfError, WalkError};
+use crate::application::ports::{
+    ComposeEntry, ComposePlan, DirectoryWalker, ImageDecoder, MergeReport, PdfEngine, WalkEntry,
+};
 use crate::domain::geometry::{RasterImage, RasterSpec};
 use crate::domain::ids::PageIndex;
 use crate::domain::source::{DocumentInfo, ImageInfo};
@@ -11,6 +13,7 @@ use crate::domain::source::{DocumentInfo, ImageInfo};
 pub struct FakePdfEngine {
     documents: HashMap<PathBuf, Result<DocumentInfo, PdfError>>,
     last_composed: Mutex<Option<ComposePlan>>,
+    last_rasterized: Mutex<Option<(PathBuf, PageIndex, u32)>>,
 }
 
 impl FakePdfEngine {
@@ -18,6 +21,7 @@ impl FakePdfEngine {
         Self {
             documents: HashMap::new(),
             last_composed: Mutex::new(None),
+            last_rasterized: Mutex::new(None),
         }
     }
 
@@ -34,6 +38,16 @@ impl FakePdfEngine {
     /// Returns the last compose plan handed to this engine.
     pub fn last_composed(&self) -> Option<ComposePlan> {
         self.last_composed
+            .lock()
+            .expect("fake PDF engine mutex should not be poisoned")
+            .clone()
+    }
+
+    /// Returns the last rasterize request handed to this engine as the source
+    /// path, the page asked for, and the requested width in pixels. Recorded
+    /// even when the request then fails, so a test can assert what was asked.
+    pub fn last_rasterized(&self) -> Option<(PathBuf, PageIndex, u32)> {
+        self.last_rasterized
             .lock()
             .expect("fake PDF engine mutex should not be poisoned")
             .clone()
@@ -61,6 +75,12 @@ impl PdfEngine for FakePdfEngine {
         page: PageIndex,
         spec: RasterSpec,
     ) -> Result<RasterImage, PdfError> {
+        *self
+            .last_rasterized
+            .lock()
+            .expect("fake PDF engine mutex should not be poisoned") =
+            Some((src.to_path_buf(), page, spec.target_width_px));
+
         let info = self.probe(src)?;
         if page.0 >= info.page_count {
             return Err(PdfError::PageOutOfRange {
@@ -76,7 +96,7 @@ impl PdfEngine for FakePdfEngine {
                 count: info.page_count,
             })?;
         let height =
-            ((spec.target_width_px as f32 * size.height_pt) / size.width_pt).round() as u32;
+            ((spec.target_width_px as f32 * size.height_pt()) / size.width_pt()).round() as u32;
         let pixel_count = spec.target_width_px as usize * height as usize;
 
         Ok(RasterImage {
@@ -91,6 +111,18 @@ impl PdfEngine for FakePdfEngine {
             .last_composed
             .lock()
             .expect("fake PDF engine mutex should not be poisoned") = Some(plan.clone());
+
+        // A registered failure stands for a source the real engine rejects while
+        // assembling the document — a file that has disappeared, for instance.
+        // The plan is recorded first, so a test can still assert what was asked.
+        for entry in &plan.entries {
+            let path = match entry {
+                ComposeEntry::PdfPage { path, .. } | ComposeEntry::Image { path, .. } => path,
+            };
+            if let Some(Err(err)) = self.documents.get(path) {
+                return Err(err.clone());
+            }
+        }
 
         Ok(MergeReport {
             page_count: plan.entries.len() as u32,
@@ -148,6 +180,70 @@ impl ImageDecoder for FakeImageDecoder {
     }
 }
 
+/// A file entry, for building `FakeDirectoryWalker` trees readably.
+pub fn file(path: impl Into<PathBuf>) -> WalkEntry {
+    WalkEntry {
+        path: path.into(),
+        is_dir: false,
+    }
+}
+
+/// A directory entry the walk is allowed to descend into.
+pub fn subdir(path: impl Into<PathBuf>) -> WalkEntry {
+    WalkEntry {
+        path: path.into(),
+        is_dir: true,
+    }
+}
+
+/// An in-memory directory tree.
+///
+/// A path is a directory exactly when it has been registered, whether with
+/// contents or with a failure. Registering a path with `with_dir` while also
+/// listing it as a `file(...)` entry of its parent is how a symlinked
+/// directory is modelled: reachable, listable, but never descended into.
+pub struct FakeDirectoryWalker {
+    directories: HashMap<PathBuf, Result<Vec<WalkEntry>, WalkError>>,
+}
+
+impl FakeDirectoryWalker {
+    pub fn new() -> Self {
+        Self {
+            directories: HashMap::new(),
+        }
+    }
+
+    pub fn with_dir(mut self, dir: impl Into<PathBuf>, entries: Vec<WalkEntry>) -> Self {
+        self.directories.insert(dir.into(), Ok(entries));
+        self
+    }
+
+    pub fn with_failure(mut self, dir: impl Into<PathBuf>, err: WalkError) -> Self {
+        self.directories.insert(dir.into(), Err(err));
+        self
+    }
+}
+
+impl Default for FakeDirectoryWalker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DirectoryWalker for FakeDirectoryWalker {
+    fn is_dir(&self, path: &Path) -> bool {
+        self.directories.contains_key(path)
+    }
+
+    fn read_dir(&self, dir: &Path) -> Result<Vec<WalkEntry>, WalkError> {
+        self.directories.get(dir).cloned().unwrap_or_else(|| {
+            Err(WalkError::Missing {
+                path: dir.to_path_buf(),
+            })
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -196,9 +292,27 @@ mod tests {
             entries: vec![ComposeEntry::PdfPage {
                 path: "/a.pdf".into(),
                 page: PageIndex(0),
+                rotation: Default::default(),
             }],
         };
         engine.compose(&plan, Path::new("/out.pdf")).unwrap();
+        assert_eq!(engine.last_composed(), Some(plan));
+    }
+
+    #[test]
+    fn compose_returns_a_registered_failure_for_a_plan_entry() {
+        let path = PathBuf::from("/gone.pdf");
+        let failure = PdfError::Missing { path: path.clone() };
+        let engine = FakePdfEngine::new().with_failure(&path, failure.clone());
+        let plan = ComposePlan {
+            entries: vec![ComposeEntry::PdfPage {
+                path,
+                page: PageIndex(0),
+                rotation: Default::default(),
+            }],
+        };
+
+        assert_eq!(engine.compose(&plan, Path::new("/out.pdf")), Err(failure));
         assert_eq!(engine.last_composed(), Some(plan));
     }
 
@@ -226,6 +340,27 @@ mod tests {
     }
 
     #[test]
+    fn rasterize_records_the_request_it_received() {
+        let engine = FakePdfEngine::new();
+
+        // Unregistered on purpose: the request is recorded even when it fails.
+        assert!(engine
+            .rasterize(
+                Path::new("/a.pdf"),
+                PageIndex(3),
+                RasterSpec {
+                    target_width_px: 200,
+                },
+            )
+            .is_err());
+
+        assert_eq!(
+            engine.last_rasterized(),
+            Some((PathBuf::from("/a.pdf"), PageIndex(3), 200))
+        );
+    }
+
+    #[test]
     fn image_probe_returns_the_registered_image_info() {
         let info = ImageInfo {
             width_px: 640,
@@ -246,6 +381,48 @@ mod tests {
         assert!(matches!(
             decoder.probe(Path::new("/broken.png")).unwrap_err(),
             ImageError::UnsupportedFormat { .. }
+        ));
+    }
+
+    #[test]
+    fn the_fake_walker_lists_a_registered_directory() {
+        let walker = FakeDirectoryWalker::new()
+            .with_dir("/scans", vec![file("/scans/a.pdf"), subdir("/scans/2024")]);
+
+        assert!(walker.is_dir(Path::new("/scans")));
+        assert_eq!(
+            walker.read_dir(Path::new("/scans")).unwrap(),
+            vec![file("/scans/a.pdf"), subdir("/scans/2024")]
+        );
+    }
+
+    #[test]
+    fn the_fake_walker_reports_missing_for_unregistered_directories() {
+        let walker = FakeDirectoryWalker::new();
+
+        assert!(!walker.is_dir(Path::new("/nope")));
+        assert!(matches!(
+            walker.read_dir(Path::new("/nope")).unwrap_err(),
+            WalkError::Missing { .. }
+        ));
+    }
+
+    #[test]
+    fn the_fake_walker_returns_registered_failures_verbatim() {
+        let walker = FakeDirectoryWalker::new().with_failure(
+            "/locked",
+            WalkError::Unreadable {
+                path: "/locked".into(),
+                reason: "permission denied".into(),
+            },
+        );
+
+        // A registered failure still counts as a directory: the walk has to be
+        // able to reach it before it can fail to list it.
+        assert!(walker.is_dir(Path::new("/locked")));
+        assert!(matches!(
+            walker.read_dir(Path::new("/locked")).unwrap_err(),
+            WalkError::Unreadable { .. }
         ));
     }
 }

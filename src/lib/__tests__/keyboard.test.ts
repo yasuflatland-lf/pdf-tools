@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextFocusIndex, resolveShortcut, type ShortcutAction } from "../keyboard";
+import { nextFocusIndex, resolveShortcut, shortcutHint, type ShortcutAction } from "../keyboard";
 
 describe("resolveShortcut", () => {
   it("maps Delete and Backspace to removing the selection", () => {
@@ -15,6 +15,21 @@ describe("resolveShortcut", () => {
   it("maps shift-modifier-Z to redo", () => {
     expect(resolveShortcut({ key: "z", metaKey: true, shiftKey: true })).toBe("redo");
     expect(resolveShortcut({ key: "z", metaKey: true })).toBe("undo");
+  });
+
+  it("maps modifier brackets to clockwise and counter-clockwise rotation", () => {
+    expect(resolveShortcut({ key: "]", metaKey: true })).toBe("rotate-right");
+    expect(resolveShortcut({ key: "[", metaKey: true })).toBe("rotate-left");
+    expect(resolveShortcut({ key: "]", ctrlKey: true })).toBe("rotate-right");
+    expect(resolveShortcut({ key: "[", ctrlKey: true })).toBe("rotate-left");
+  });
+
+  it("ignores rotation shortcuts while a text entry has focus", () => {
+    const input = document.createElement("input");
+    const textarea = document.createElement("textarea");
+
+    expect(resolveShortcut({ key: "]", metaKey: true, target: input })).toBeNull();
+    expect(resolveShortcut({ key: "[", ctrlKey: true, target: textarea })).toBeNull();
   });
 
   it("ignores shortcuts while a text input has focus", () => {
@@ -74,4 +89,27 @@ describe("nextFocusIndex", () => {
       expect(nextFocusIndex(action, currentIndex, count, columns)).toBe(expected);
     },
   );
+});
+
+describe("shortcutHint", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+  const windows = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
+  it("uses the macOS glyphs on a Mac", () => {
+    expect(shortcutHint("undo", mac)).toBe("⌘Z");
+    expect(shortcutHint("redo", mac)).toBe("⇧⌘Z");
+    expect(shortcutHint("rotate-left", mac)).toBe("⌘[");
+    expect(shortcutHint("rotate-right", mac)).toBe("⌘]");
+  });
+
+  it("spells the modifier out on every other platform", () => {
+    expect(shortcutHint("undo", windows)).toBe("Ctrl+Z");
+    expect(shortcutHint("redo", windows)).toBe("Ctrl+Shift+Z");
+    expect(shortcutHint("rotate-left", windows)).toBe("Ctrl+[");
+    expect(shortcutHint("rotate-right", windows)).toBe("Ctrl+]");
+  });
+
+  it("falls back to the spelled-out modifier when the user agent is unknown", () => {
+    expect(shortcutHint("undo", "")).toBe("Ctrl+Z");
+  });
 });

@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use crate::application::errors::{ImageError, PdfError};
+use crate::application::errors::{ImageError, PdfError, WalkError};
 use crate::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use crate::domain::ids::PageIndex;
+use crate::domain::plan::Rotation;
 use crate::domain::source::{DocumentInfo, ImageInfo};
 
 /// A fully resolved merge instruction.
@@ -17,8 +18,16 @@ pub struct ComposePlan {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComposeEntry {
-    PdfPage { path: PathBuf, page: PageIndex },
-    Image { path: PathBuf, fit_to: PageSize },
+    PdfPage {
+        path: PathBuf,
+        page: PageIndex,
+        rotation: Rotation,
+    },
+    Image {
+        path: PathBuf,
+        fit_to: PageSize,
+        rotation: Rotation,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,4 +53,28 @@ pub trait ImageDecoder: Send + Sync {
     fn probe(&self, src: &Path) -> Result<ImageInfo, ImageError>;
 
     fn decode_first_frame(&self, src: &Path) -> Result<RasterImage, ImageError>;
+}
+
+/// One entry inside a directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WalkEntry {
+    pub path: PathBuf,
+    /// A symlink reports `false` even when it points at a directory. The walk
+    /// only descends where this is `true`, so a link cycle cannot hang a scan.
+    pub is_dir: bool,
+}
+
+/// Lists one directory at a time, and nothing more.
+///
+/// The traversal itself lives in the application layer rather than here. That
+/// is what keeps walk order, extension filtering and hidden-entry rules
+/// testable without touching a filesystem, and it leaves this port with a
+/// surface small enough that a fake is a plain map.
+pub trait DirectoryWalker: Send + Sync {
+    /// Whether the path is a directory the walk may start from. Unlike
+    /// `WalkEntry::is_dir` this follows symlinks: a folder the user picked
+    /// deliberately should work even when it is a link.
+    fn is_dir(&self, path: &Path) -> bool;
+
+    fn read_dir(&self, dir: &Path) -> Result<Vec<WalkEntry>, WalkError>;
 }

@@ -1,14 +1,17 @@
-import { useEffect } from "react";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
-import { resolveShortcut } from "../lib/keyboard";
-import { removeSlots } from "../lib/tauri-api";
+import { removeSlots, removeSource } from "../lib/tauri-api";
+import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
+import { useSnapshotSync } from "../store/useSnapshotSync";
+import { AddSourcesButtons } from "./AddSourcesButtons";
 import { DropZone } from "./DropZone";
 import { SourceErrorCard } from "./PageCard";
 import { PageGrid } from "./PageGrid";
 import { PageList } from "./PageList";
+import { SourceNotice } from "./SourceNotice";
 import { Toolbar } from "./Toolbar";
+import { ThumbnailCacheProvider } from "./card/ThumbnailCacheProvider";
 
 /**
  * Files that contribute no pages would otherwise vanish from the window, since
@@ -23,7 +26,15 @@ function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
     >
       {sources.map((source) => (
         <li key={source.id}>
-          <SourceErrorCard fileName={source.file_name} status={source.status} />
+          <SourceErrorCard
+            fileName={source.file_name}
+            onDismiss={() => {
+              void removeSource(source.id)
+                .then((snapshot) => usePlanStore.getState().setSnapshot(snapshot))
+                .catch((error: unknown) => console.error("remove source failed", error));
+            }}
+            status={source.status}
+          />
         </li>
       ))}
     </ul>
@@ -31,59 +42,44 @@ function UnusableSources({ sources }: { sources: SourceFileDto[] }) {
 }
 
 export function AppShell() {
+  useSnapshotSync();
   const sources = usePlanStore((state) => state.sources);
   const slotCount = usePlanStore((state) => state.slots.length);
   const viewMode = useUiStore((state) => state.viewMode);
   const unusableSources = sources.filter((source) => source.status.kind !== "ready");
 
-  /**
-   * The document-wide shortcuts. They live on the shell rather than on the grid
-   * because the grid unmounts once the plan is empty, and Escape has to keep
-   * working there. Undo and redo stay in the toolbar, which owns the flags that
-   * gate them; handling them here as well would run each of them twice.
-   */
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // A card drag consumes its own keys; nothing already handled is a shortcut.
-      if (event.defaultPrevented) {
-        return;
+  // These stay on the shell so Escape works even after the grid unmounts with
+  // an empty plan. History and focus register their own disjoint actions.
+  useShortcuts({
+    "select-all": () => {
+      useUiStore.getState().selectSlots(usePlanStore.getState().slots.map((slot) => slot.id));
+      return true;
+    },
+    "clear-selection": () => {
+      useUiStore.getState().clearSelection();
+      return true;
+    },
+    "remove-selected": () => {
+      const selected = useUiStore.getState().selectedSlots;
+      if (selected.size === 0) {
+        return false;
       }
 
-      const action = resolveShortcut(event);
-      if (action === "select-all") {
-        event.preventDefault();
-        useUiStore.getState().selectSlots(usePlanStore.getState().slots.map((slot) => slot.id));
-      } else if (action === "clear-selection") {
-        event.preventDefault();
-        useUiStore.getState().clearSelection();
-      } else if (action === "remove-selected") {
-        const selected = useUiStore.getState().selectedSlots;
-        if (selected.size === 0) {
-          return;
-        }
-
-        event.preventDefault();
-        void removeSlots([...selected])
-          .then((snapshot) => usePlanStore.getState().setSnapshot(snapshot))
-          .catch((error: unknown) => console.error("remove failed", error));
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+      void removeSlots([...selected])
+        .then((snapshot) => usePlanStore.getState().setSnapshot(snapshot))
+        .catch((error: unknown) => console.error("remove failed", error));
+      return true;
+    },
+  });
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
-      <header className="bg-slate-950 px-6 py-5">
-        <h1 className="text-2xl font-semibold tracking-tight">PDF Tools</h1>
-        <p className="mt-1 text-sm text-slate-400">Combine PDFs and images into a single PDF.</p>
-      </header>
-
       <Toolbar />
 
       <DropZone>
         <main className="flex h-full flex-col gap-4 overflow-hidden px-6 py-6">
+          <SourceNotice />
+
           {unusableSources.length > 0 && <UnusableSources sources={unusableSources} />}
 
           <div className="min-h-0 flex-1">
@@ -94,12 +90,13 @@ export function AppShell() {
                   <p className="mt-1 text-sm text-slate-500">
                     Source files will appear in this document.
                   </p>
+                  <AddSourcesButtons />
                 </div>
               </div>
-            ) : viewMode === "grid" ? (
-              <PageGrid />
             ) : (
-              <PageList />
+              <ThumbnailCacheProvider>
+                {viewMode === "grid" ? <PageGrid /> : <PageList />}
+              </ThumbnailCacheProvider>
             )}
           </div>
         </main>

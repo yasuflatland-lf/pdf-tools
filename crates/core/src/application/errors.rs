@@ -27,3 +27,23 @@ pub enum ImageError {
     #[error("failed to encode the image: {reason}")]
     EncodeFailed { reason: String },
 }
+
+#[derive(Debug, Clone, thiserror::Error, PartialEq)]
+pub enum WalkError {
+    #[error("failed to list the directory at {path}: {reason}")]
+    Unreadable { path: PathBuf, reason: String },
+    #[error("the directory is no longer present: {path}")]
+    Missing { path: PathBuf },
+}
+
+#[derive(Debug, thiserror::Error, PartialEq)]
+pub enum ComposeError {
+    #[error("the source file is no longer present: {path}")]
+    SourceMissing { path: PathBuf },
+    #[error("nothing to merge: the plan is empty")]
+    EmptyPlan,
+    #[error("nothing to merge: the document has no usable pages")]
+    NoUsableSources,
+    #[error(transparent)]
+    Engine(#[from] PdfError),
+}

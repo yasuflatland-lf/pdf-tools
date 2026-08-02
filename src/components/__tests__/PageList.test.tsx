@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PageSlotDto } from "../../bindings/PageSlotDto";
@@ -7,6 +7,7 @@ import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { usePlanStore } from "../../store/plan-store";
 import { useUiStore } from "../../store/ui-store";
 import { PageList } from "../PageList";
+import { ThumbnailCacheProvider } from "../card/ThumbnailCacheProvider";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -16,7 +17,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 const mountedRoots: Root[] = [];
 
-function source(id: number, grouping: string, pageCount: number): SourceFileDto {
+function renderWithCache(children: ReactNode): ReactNode {
+  return <ThumbnailCacheProvider>{children}</ThumbnailCacheProvider>;
+}
+
+function source(id: number, grouping: SourceFileDto["grouping"], pageCount: number): SourceFileDto {
   return {
     id,
     path: `/documents/${id}.pdf`,
@@ -33,6 +38,7 @@ function slots(sourceId: number, pageCount: number): PageSlotDto[] {
     id: page + 1,
     source: sourceId,
     page,
+    rotation: 0,
   }));
 }
 
@@ -52,7 +58,7 @@ async function renderList(): Promise<HTMLElement> {
   mountedRoots.push(root);
 
   await act(async () => {
-    root.render(<PageList />);
+    root.render(renderWithCache(<PageList />));
   });
 
   return container;
@@ -101,6 +107,12 @@ async function pressKey(target: HTMLElement, code: string): Promise<void> {
   });
 }
 
+async function pressArrow(key: string): Promise<void> {
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }));
+  });
+}
+
 function stopMeasuringElements(): void {
   for (const [name, descriptor] of measuredProperties) {
     if (descriptor) {
@@ -133,7 +145,11 @@ describe("PageList", () => {
     usePlanStore
       .getState()
       .setSnapshot({ slots: [], sources: [], can_undo: false, can_redo: false });
-    useUiStore.setState({ expandedSources: new Set() });
+    useUiStore.setState({
+      expandedSources: new Set(),
+      modalOpen: false,
+      selectedSlots: new Set(),
+    });
     stopMeasuringElements();
     vi.restoreAllMocks();
   });
@@ -154,7 +170,6 @@ describe("PageList", () => {
     expect(container.querySelectorAll("article")).toHaveLength(1);
     expect(container.textContent).toContain("10.pdf");
     expect(container.textContent).toContain("3 pages");
-    expect(container.textContent).toContain("Ready");
   });
 
   it("expands a source into per-page rows when the UI store says so", async () => {
@@ -182,12 +197,63 @@ describe("PageList", () => {
     expect(container.querySelectorAll("article")).toHaveLength(3);
   });
 
+  it("gives its toggle the same accessible name as the grid toggle", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderList();
+
+    expect(container.querySelector('[aria-label="Expand 10.pdf"]')).not.toBeNull();
+  });
+
+  it("renders no rotate control", async () => {
+    load(source(10, "ungrouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.querySelector('[aria-label^="Rotate "]')).toBeNull();
+  });
+
+  it("a_selected_row_is_marked_as_selected", async () => {
+    load(source(10, "ungrouped", 2), 2);
+    useUiStore.setState({ selectedSlots: new Set([1]) });
+
+    const container = await renderList();
+    const rows = container.querySelectorAll("article");
+
+    expect(rows[0]?.classList).toContain("border-sky-400");
+    expect(rows[0]?.classList).toContain("ring-2");
+    expect(rows[0]?.classList).toContain("ring-sky-400/60");
+    expect(rows[1]?.classList).not.toContain("border-sky-400");
+    expect(rows[1]?.classList).not.toContain("ring-2");
+    expect(rows[1]?.classList).not.toContain("ring-sky-400/60");
+  });
+
+  it("a_collapsed_group_row_is_selected_only_when_every_page_is", async () => {
+    load(source(10, "grouped", 2), 2);
+    useUiStore.setState({ selectedSlots: new Set([1]) });
+
+    const container = await renderList();
+    const row = container.querySelector("article");
+
+    expect(row?.classList).not.toContain("border-sky-400");
+    expect(row?.classList).not.toContain("ring-2");
+    expect(row?.classList).not.toContain("ring-sky-400/60");
+
+    await act(async () => {
+      useUiStore.setState({ selectedSlots: new Set([1, 2]) });
+    });
+
+    expect(row?.classList).toContain("border-sky-400");
+    expect(row?.classList).toContain("ring-2");
+    expect(row?.classList).toContain("ring-sky-400/60");
+  });
+
   it("sends one reorder command with the grid coordinates after a keyboard drag", async () => {
     const reordered: PlanSnapshot = {
       slots: [
-        { id: 2, source: 10, page: 1 },
-        { id: 1, source: 10, page: 0 },
-        { id: 3, source: 10, page: 2 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 3, source: 10, page: 2, rotation: 0 },
       ],
       sources: [source(10, "ungrouped", 3)],
       can_undo: true,
@@ -208,5 +274,88 @@ describe("PageList", () => {
       ["reorder", { fromStart: 0, fromEnd: 1, to: 1 }],
     ]);
     expect(usePlanStore.getState().slots.map((slot) => slot.id)).toEqual([2, 1, 3]);
+  });
+
+  it("shows a visible badge when a thumbnail cannot be rendered", async () => {
+    invoke.mockRejectedValue(new Error("boom"));
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.textContent).toContain("Thumbnail unavailable");
+  });
+
+  it("renders a rotated thumbnail and announces its orientation", async () => {
+    usePlanStore.getState().setSnapshot({
+      slots: [{ id: 1, source: 10, page: 0, rotation: 3 }],
+      sources: [source(10, "ungrouped", 1)],
+      can_undo: false,
+      can_redo: false,
+    });
+
+    const container = await renderList();
+
+    expect(container.querySelector("img")?.style.transform).toContain("rotate(270deg)");
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-label")).toContain(
+      "270° clockwise",
+    );
+  });
+
+  it("does not label every row with a status that cannot be anything but ready", async () => {
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderList();
+
+    expect(container.textContent).not.toContain("Ready");
+  });
+
+  it("moves focus and selection with the arrow keys", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    const container = await renderList();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    expect(options).toHaveLength(3);
+    await pressArrow("ArrowDown");
+    expect(options[0].getAttribute("aria-selected")).toBe("true");
+    expect(options[0]).toBe(document.activeElement);
+
+    await pressArrow("ArrowDown");
+    expect(options[1].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("treats left and right as previous and next in a single column", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    const container = await renderList();
+
+    await pressArrow("ArrowRight");
+    await pressArrow("ArrowRight");
+
+    expect(container.querySelectorAll('[role="option"]')[1]?.getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+
+  it("does not move focus or selection while a modal is open", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    useUiStore.setState({ modalOpen: true });
+    const container = await renderList();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await pressArrow("ArrowRight");
+
+    expect(options.some((option) => option.getAttribute("aria-selected") === "true")).toBe(false);
+    expect(options.includes(document.activeElement as HTMLElement)).toBe(false);
+  });
+
+  it("lets the listbox own the option rows with no role in between", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    const container = await renderList();
+    const listbox = container.querySelector('[role="listbox"]');
+
+    expect(listbox).not.toBeNull();
+    expect(listbox?.getAttribute("aria-multiselectable")).toBe("true");
+    for (const option of container.querySelectorAll('[role="option"]')) {
+      expect(option.closest('[role="listbox"]')).toBe(listbox);
+    }
   });
 });

@@ -1,3 +1,4 @@
+// This module now contains path helpers; renaming it is outside this focused change.
 import { downloadDir } from "@tauri-apps/api/path";
 
 const OUTPUT_DIR_KEY = "pdf-tools.output-dir";
@@ -21,6 +22,11 @@ export async function defaultOutputDir(): Promise<string> {
   }
 
   return downloadDir();
+}
+
+/** The last path segment, ignoring a trailing separator. */
+export function baseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 export function parentDir(filePath: string): string {

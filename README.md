@@ -1,11 +1,19 @@
+<div align="center">
+
+<img src="public/logo.svg" alt="PDF Tools logo" width="96" height="96">
+
 # PDF Tools
 
 [![CI](https://img.shields.io/github/actions/workflow/status/yasuflatland-lf/pdf-tools/ci.yml?branch=main&label=CI&logo=github)](https://github.com/yasuflatland-lf/pdf-tools/actions/workflows/ci.yml)
+[![backend coverage](https://img.shields.io/codecov/c/github/yasuflatland-lf/pdf-tools?flag=rust&label=backend%20coverage&logo=codecov)](https://codecov.io/gh/yasuflatland-lf/pdf-tools)
+[![frontend coverage](https://img.shields.io/codecov/c/github/yasuflatland-lf/pdf-tools?flag=frontend&label=frontend%20coverage&logo=codecov)](https://codecov.io/gh/yasuflatland-lf/pdf-tools)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A native desktop app (macOS / Windows) that merges **PDFs and images (jpg / png / gif)** into a
 single PDF, in any page order you choose. Everything runs locally — **no file ever leaves your
 machine, and the app makes no network requests at all.**
+
+</div>
 
 ## Why
 
@@ -22,7 +30,10 @@ your own disk.
 
 ## Features
 
-- **Drag and drop** PDFs and images; each file's pages become slots in one merge plan.
+- **Drag and drop** PDFs and images, or add them from a file or folder picker; each file's pages
+  become slots in one merge plan.
+- **Whole folders** — a dropped or picked folder expands into every PDF and image beneath it, at
+  any depth, in the order a file manager shows them. A large folder asks before it is added.
 - **Grouping** — contiguous pages from one file collapse into a single card. Insert something
   into the middle of a file and it expands into per-page cards; delete back to a contiguous,
   increasing run and it folds up again automatically.
@@ -47,6 +58,10 @@ The macOS bundle is code-signed but **not notarized by Apple**, and the Windows 
 publisher signature, so both operating systems warn the first time you open the app. On macOS,
 open it once from Finder with **right-click → Open**; on Windows, choose **More info → Run
 anyway** in the SmartScreen dialog. After that it launches normally.
+
+## Architecture
+
+![PDF Tools architecture](docs/images/architecture.png)
 
 ## Development
 

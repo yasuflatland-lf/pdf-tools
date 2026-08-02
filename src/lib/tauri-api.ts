@@ -8,6 +8,23 @@ export async function addSources(paths: string[]): Promise<PlanSnapshot> {
   return invoke<PlanSnapshot>("add_sources", { paths });
 }
 
+/**
+ * Resolves folders to supported files and drops unsupported direct inputs.
+ * Separate from `addSources` so the count can be seen, and asked about, before
+ * anything enters the plan.
+ */
+export async function expandPaths(paths: string[]): Promise<string[]> {
+  return invoke<string[]>("expand_paths", { paths });
+}
+
+/**
+ * The extensions the picker offers. Fetched rather than hard-coded so the
+ * filter and the merge rule cannot drift apart.
+ */
+export async function supportedExtensions(): Promise<string[]> {
+  return invoke<string[]>("supported_extensions");
+}
+
 export async function rasterizeSlot(slotId: number, width: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("rasterize_slot", { slotId, width });
 }
@@ -22,6 +39,14 @@ export async function reorder(
 
 export async function removeSlots(slotIds: number[]): Promise<PlanSnapshot> {
   return invoke<PlanSnapshot>("remove_slots", { slotIds });
+}
+
+export async function removeSource(sourceId: number): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("remove_source", { sourceId });
+}
+
+export async function rotateSlots(slotIds: number[], delta: number): Promise<PlanSnapshot> {
+  return invoke<PlanSnapshot>("rotate_slots", { slotIds, delta });
 }
 
 export async function undo(): Promise<PlanSnapshot> {

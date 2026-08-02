@@ -12,12 +12,11 @@ import type { PageSlotDto } from "../bindings/PageSlotDto";
 import type { SourceFileDto } from "../bindings/SourceFileDto";
 import { computeDropTarget } from "../lib/drop-position";
 import { groupContiguous } from "../lib/grouping";
-import { rasterizeSlot, reorder } from "../lib/tauri-api";
-import { createThumbnailCache, type ThumbnailCache } from "../lib/thumbnail-cache";
+import { nextFocusIndex, type ShortcutAction } from "../lib/keyboard";
+import { reorder } from "../lib/tauri-api";
+import { useShortcuts } from "../lib/useShortcuts";
 import { usePlanStore } from "../store/plan-store";
 import { useUiStore } from "../store/ui-store";
-
-const CACHE_CAPACITY = 100;
 
 export interface DisplayCard {
   key: string;
@@ -34,7 +33,6 @@ export interface DisplayCard {
 }
 
 export function usePageCards(): {
-  cache: ThumbnailCache;
   cards: DisplayCard[];
   handleDragEnd: (event: DragEndEvent) => Promise<void>;
   sensors: ReturnType<typeof useSensors>;
@@ -42,9 +40,6 @@ export function usePageCards(): {
   const slots = usePlanStore((state) => state.slots);
   const sources = usePlanStore((state) => state.sources);
   const expandedSources = useUiStore((state) => state.expandedSources);
-  const [cache] = useState(() =>
-    createThumbnailCache({ fetcher: rasterizeSlot, capacity: CACHE_CAPACITY }),
-  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -91,8 +86,6 @@ export function usePageCards(): {
     });
   }, [expandedSources, slots, sources]);
 
-  useEffect(() => () => cache.release(), [cache]);
-
   /**
    * The only place a drag touches the backend. While the pointer moves,
    * `rectSortingStrategy` shifts the cards with CSS transforms alone, so the
@@ -113,14 +106,160 @@ export function usePageCards(): {
     }
 
     try {
-      const snapshot = await reorder(target.from[0], target.from[1], target.to);
+      const snapshot = await reorder(target.fromStart, target.fromEnd, target.to);
       usePlanStore.getState().setSnapshot(snapshot);
     } catch (error) {
       console.error("reorder failed", error);
     }
   };
 
-  return { cache, cards, handleDragEnd, sensors };
+  return { cards, handleDragEnd, sensors };
+}
+
+interface CardFocusOptions {
+  cards: DisplayCard[];
+  columnCount: number;
+  scrollToIndex: (rowIndex: number) => void;
+}
+
+export interface CardSelectionModifiers {
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
+interface CardFocusResult {
+  focusedIndex: number | null;
+  selectCard: (index: number, modifiers: CardSelectionModifiers) => void;
+}
+
+interface CardPosition {
+  index: number;
+  key: string;
+}
+
+/**
+ * Where the focus ring goes. The focus is a place the user is looking at, so a
+ * card that has gone leaves the ring near where it stood and the effect below
+ * re-anchors it to whatever took the position.
+ */
+function resolveCardIndex(position: CardPosition | null, cards: DisplayCard[]): number {
+  if (position === null) {
+    return -1;
+  }
+
+  const byKey = cards.findIndex((card) => card.key === position.key);
+  return byKey >= 0 ? byKey : Math.min(position.index, cards.length - 1);
+}
+
+/**
+ * Where a Shift-click measures its range from. Unlike the focus, the anchor is
+ * an identity -- the card whose own pages the range is meant to start at -- so a
+ * card that has gone takes the anchor with it. Clamping it to a position instead
+ * would measure the range from whichever unrelated card moved into that index
+ * when a group folded, a run refolded after a rotation, or a delete landed.
+ */
+function resolveAnchorIndex(position: CardPosition | null, cards: DisplayCard[]): number {
+  return position === null ? -1 : cards.findIndex((card) => card.key === position.key);
+}
+
+/**
+ * Arrow navigation over the cards. It lives here rather than in a view because
+ * both views need it and only the column count differs -- the list is a grid one
+ * column wide. The selection follows the focus so that Delete always acts on the
+ * card the user is looking at.
+ *
+ * The focus is held as a card key rather than a position: `cards` is rebuilt from
+ * every snapshot, so a bare index silently points at whichever card moved into
+ * that slot after a delete, a reorder or an undo.
+ */
+export function useCardFocus({
+  cards,
+  columnCount,
+  scrollToIndex,
+}: CardFocusOptions): CardFocusResult {
+  const [focused, setFocused] = useState<CardPosition | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<CardPosition | null>(null);
+  // A card can disappear after delete, reorder or undo. Stay near the same
+  // position until the effect below anchors focus to the replacement card.
+  const focusedIndex = resolveCardIndex(focused, cards);
+  const anchorIndex = resolveAnchorIndex(selectionAnchor, cards);
+
+  // Once the focus has fallen back onto whatever card took that position,
+  // re-anchor it to that card and make the selection follow it, or the next
+  // Delete acts on a card the ring is no longer drawn around.
+  useEffect(() => {
+    if (focused !== null && focusedIndex >= 0 && cards[focusedIndex].key !== focused.key) {
+      const replacement = { key: cards[focusedIndex].key, index: focusedIndex };
+      setFocused(replacement);
+      setSelectionAnchor(replacement);
+      useUiStore.getState().selectSlots(cards[focusedIndex].slotIds);
+    }
+  }, [cards, focused, focusedIndex]);
+
+  const selectCard = (index: number, modifiers: CardSelectionModifiers): void => {
+    const card = cards[index];
+    if (!card) {
+      return;
+    }
+
+    const nextPosition = { key: card.key, index };
+    setFocused(nextPosition);
+
+    // With no surviving anchor a Shift-click has nothing to measure from, so it
+    // falls through to the plain branch below, which selects this card alone and
+    // makes it the anchor the next Shift-click extends from.
+    if (modifiers.shiftKey && anchorIndex >= 0) {
+      const rangeStart = Math.min(anchorIndex, index);
+      const rangeEnd = Math.max(anchorIndex, index);
+      useUiStore
+        .getState()
+        .selectSlots(
+          cards.slice(rangeStart, rangeEnd + 1).flatMap((rangeCard) => rangeCard.slotIds),
+        );
+      return;
+    }
+
+    setSelectionAnchor(nextPosition);
+    if (modifiers.metaKey || modifiers.ctrlKey) {
+      const selected = new Set(useUiStore.getState().selectedSlots);
+      const cardIsSelected = card.slotIds.every((slotId) => selected.has(slotId));
+      for (const slotId of card.slotIds) {
+        if (cardIsSelected) {
+          selected.delete(slotId);
+        } else {
+          selected.add(slotId);
+        }
+      }
+      useUiStore.getState().selectSlots([...selected]);
+      return;
+    }
+
+    useUiStore.getState().selectSlots(card.slotIds);
+  };
+
+  const moveFocus = (action: ShortcutAction): boolean => {
+    const next = nextFocusIndex(action, focusedIndex, cards.length, columnCount);
+    if (next === null) {
+      return false;
+    }
+
+    const nextPosition = { key: cards[next].key, index: next };
+    setFocused(nextPosition);
+    setSelectionAnchor(nextPosition);
+    scrollToIndex(Math.floor(next / columnCount));
+    useUiStore.getState().selectSlots(cards[next].slotIds);
+    return true;
+  };
+
+  useShortcuts({
+    "focus-previous": () => moveFocus("focus-previous"),
+    "focus-next": () => moveFocus("focus-next"),
+    "focus-row-previous": () => moveFocus("focus-row-previous"),
+    "focus-row-next": () => moveFocus("focus-row-next"),
+  });
+
+  return { focusedIndex: focusedIndex >= 0 ? focusedIndex : null, selectCard };
 }
 
 interface CardRowsOptions {

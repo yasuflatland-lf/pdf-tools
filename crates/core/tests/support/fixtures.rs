@@ -1,11 +1,16 @@
+#![allow(dead_code)]
+
 use pdf_tools_core::infrastructure::pdfium::PdfiumEngine;
 use pdfium_render::prelude::{
     PdfColor, PdfPageObjectsCommon, PdfPagePaperSize, PdfPagePaperStandardSize, PdfPagePathObject,
-    PdfPoints, PdfRect, Pdfium, PdfiumError,
+    PdfPageRenderRotation, PdfPoints, PdfRect, Pdfium, PdfiumError,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+
+#[path = "../../examples/support/exif_fixtures.rs"]
+mod exif_fixtures;
 
 pub fn library_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/resources/pdfium")
@@ -17,6 +22,11 @@ pub fn fixtures_dir() -> PathBuf {
 
 pub fn fixture(name: &str) -> PathBuf {
     ensure_generated();
+    fixtures_dir().join(name)
+}
+
+pub fn image_fixture(name: &str) -> PathBuf {
+    ensure_image_fixtures();
     fixtures_dir().join(name)
 }
 
@@ -35,45 +45,51 @@ pub fn engine() -> &'static PdfiumEngine {
 }
 
 pub fn ensure_generated() {
-    let directory = fixtures_dir();
-    fs::create_dir_all(&directory).expect("fixture directory should be created");
+    ensure_image_fixtures();
 
+    let directory = fixtures_dir();
     let multi_page_path = directory.join("multi_page.pdf");
     let mixed_size_path = directory.join("mixed_size.pdf");
+    let rotated_page_path = directory.join("rotated_page.pdf");
     let corrupt_path = directory.join("corrupt.pdf");
     let needs_multi_page_bytes = !multi_page_path.exists() || !corrupt_path.exists();
     let needs_mixed_size_bytes = !mixed_size_path.exists();
+    let needs_rotated_page_bytes = !rotated_page_path.exists();
 
-    if !needs_multi_page_bytes && !needs_mixed_size_bytes {
+    if !needs_multi_page_bytes && !needs_mixed_size_bytes && !needs_rotated_page_bytes {
         return;
     }
 
-    let (multi_page_bytes, mixed_size_bytes) = engine().with_library(|pdfium| {
-        let multi_page_bytes = needs_multi_page_bytes.then(|| {
-            make_pdf(
-                pdfium,
-                &[
-                    PdfPagePaperSize::a4(),
-                    PdfPagePaperSize::a4(),
-                    PdfPagePaperSize::a4(),
-                ],
-            )
-            .expect("multi-page fixture should be generated")
-        });
-        let mixed_size_bytes = needs_mixed_size_bytes.then(|| {
-            make_pdf(
-                pdfium,
-                &[
-                    PdfPagePaperSize::a4(),
-                    PdfPagePaperSize::a4(),
-                    PdfPagePaperSize::new_portrait(PdfPagePaperStandardSize::USLetterAnsiA),
-                ],
-            )
-            .expect("mixed-size fixture should be generated")
-        });
+    let (multi_page_bytes, mixed_size_bytes, rotated_page_bytes) =
+        engine().with_library(|pdfium| {
+            let multi_page_bytes = needs_multi_page_bytes.then(|| {
+                make_pdf(
+                    pdfium,
+                    &[
+                        PdfPagePaperSize::a4(),
+                        PdfPagePaperSize::a4(),
+                        PdfPagePaperSize::a4(),
+                    ],
+                )
+                .expect("multi-page fixture should be generated")
+            });
+            let mixed_size_bytes = needs_mixed_size_bytes.then(|| {
+                make_pdf(
+                    pdfium,
+                    &[
+                        PdfPagePaperSize::a4(),
+                        PdfPagePaperSize::a4(),
+                        PdfPagePaperSize::new_portrait(PdfPagePaperStandardSize::USLetterAnsiA),
+                    ],
+                )
+                .expect("mixed-size fixture should be generated")
+            });
+            let rotated_page_bytes = needs_rotated_page_bytes.then(|| {
+                make_rotated_pdf(pdfium).expect("rotated-page fixture should be generated")
+            });
 
-        (multi_page_bytes, mixed_size_bytes)
-    });
+            (multi_page_bytes, mixed_size_bytes, rotated_page_bytes)
+        });
 
     if let Some(bytes) = multi_page_bytes {
         write_atomic_if_absent(&multi_page_path, &bytes);
@@ -92,6 +108,16 @@ pub fn ensure_generated() {
     if let Some(bytes) = mixed_size_bytes {
         write_atomic_if_absent(&mixed_size_path, &bytes);
     }
+
+    if let Some(bytes) = rotated_page_bytes {
+        write_atomic_if_absent(&rotated_page_path, &bytes);
+    }
+}
+
+pub fn ensure_image_fixtures() {
+    let directory = fixtures_dir();
+    fs::create_dir_all(&directory).expect("fixture directory should be created");
+    exif_fixtures::ensure_generated(&directory);
 }
 
 fn make_pdf(pdfium: &Pdfium, sizes: &[PdfPagePaperSize]) -> Result<Vec<u8>, PdfiumError> {
@@ -112,6 +138,16 @@ fn make_pdf(pdfium: &Pdfium, sizes: &[PdfPagePaperSize]) -> Result<Vec<u8>, Pdfi
         drop(page);
     }
 
+    document.save_to_bytes()
+}
+
+fn make_rotated_pdf(pdfium: &Pdfium) -> Result<Vec<u8>, PdfiumError> {
+    let mut document = pdfium.create_new_pdf()?;
+    let mut page = document
+        .pages_mut()
+        .create_page_at_end(PdfPagePaperSize::a4())?;
+    page.set_rotation(PdfPageRenderRotation::Degrees90);
+    drop(page);
     document.save_to_bytes()
 }
 

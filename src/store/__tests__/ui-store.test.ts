@@ -7,6 +7,26 @@ describe("createUiStore", () => {
     vi.restoreAllMocks();
   });
 
+  it("starts with the UI-only selections and grid view", () => {
+    expect(createUiStore().getState()).toEqual({
+      expandedSources: new Set(),
+      selectedSlots: new Set(),
+      viewMode: "grid",
+      modalOpen: false,
+      sourceNotice: null,
+      isIngesting: false,
+      setModalOpen: expect.any(Function),
+      setSourceNotice: expect.any(Function),
+      setIngesting: expect.any(Function),
+      setViewMode: expect.any(Function),
+      toggleExpanded: expect.any(Function),
+      pruneExpanded: expect.any(Function),
+      selectSlots: expect.any(Function),
+      clearSelection: expect.any(Function),
+      pruneSelected: expect.any(Function),
+    });
+  });
+
   it("toggles a source between expanded and collapsed", () => {
     const store = createUiStore();
     store.getState().toggleExpanded(10);
@@ -95,5 +115,38 @@ describe("createUiStore", () => {
 
     store.getState().pruneSelected([20, 30]);
     expect(store.getState().selectedSlots).toEqual(new Set([20]));
+  });
+
+  it("starts with no modal open and tracks the flag", () => {
+    const store = createUiStore();
+    expect(store.getState().modalOpen).toBe(false);
+    store.getState().setModalOpen(true);
+    expect(store.getState().modalOpen).toBe(true);
+    store.getState().setModalOpen(false);
+    expect(store.getState().modalOpen).toBe(false);
+  });
+
+  it("holds a source notice until it is replaced or cleared", () => {
+    const store = createUiStore();
+
+    expect(store.getState().sourceNotice).toBeNull();
+
+    store.getState().setSourceNotice('No PDFs or images found in "Scans".');
+    expect(store.getState().sourceNotice).toBe('No PDFs or images found in "Scans".');
+
+    store.getState().setSourceNotice(null);
+    expect(store.getState().sourceNotice).toBeNull();
+  });
+
+  it("tracks whether an add is in flight", () => {
+    const store = createUiStore();
+
+    expect(store.getState().isIngesting).toBe(false);
+
+    store.getState().setIngesting(true);
+    expect(store.getState().isIngesting).toBe(true);
+
+    store.getState().setIngesting(false);
+    expect(store.getState().isIngesting).toBe(false);
   });
 });

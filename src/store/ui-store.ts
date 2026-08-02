@@ -21,6 +21,22 @@ interface UiState {
   expandedSources: Set<number>;
   selectedSlots: Set<number>;
   viewMode: ViewMode;
+  /**
+   * Whether a modal owns the keyboard. The shared document shortcut listener
+   * checks this before dispatching any action behind the overlay.
+   */
+  modalOpen: boolean;
+  /**
+   * The one-line report about the last add attempt, or `null` for none. Both
+   * entry points write here so a single notice serves an empty plan and a
+   * populated one, and neither can leave a stale message behind the other.
+   */
+  sourceNotice: string | null;
+  /** Whether an add is in flight. Both entry points disable while it is true. */
+  isIngesting: boolean;
+  setModalOpen: (open: boolean) => void;
+  setSourceNotice: (notice: string | null) => void;
+  setIngesting: (isIngesting: boolean) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleExpanded: (sourceId: number) => void;
   pruneExpanded: (sourceIds: number[]) => void;
@@ -34,6 +50,18 @@ export function createUiStore() {
     expandedSources: new Set(),
     selectedSlots: new Set(),
     viewMode: loadPersistedViewMode(),
+    modalOpen: false,
+    sourceNotice: null,
+    isIngesting: false,
+    setModalOpen: (modalOpen) => {
+      set({ modalOpen });
+    },
+    setSourceNotice: (sourceNotice) => {
+      set({ sourceNotice });
+    },
+    setIngesting: (isIngesting) => {
+      set({ isIngesting });
+    },
     setViewMode: (viewMode) => {
       set({ viewMode });
       try {

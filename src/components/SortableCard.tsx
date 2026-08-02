@@ -1,5 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { rotationDegrees } from "../lib/rotation";
+import type { CardSelectionModifiers } from "./usePageCards";
 
 interface Transform {
   x: number;
@@ -27,10 +29,20 @@ interface SortableCardProps {
   focused?: boolean;
   id: string;
   label: string;
+  onSelect?: (modifiers: CardSelectionModifiers) => void;
+  rotation: number;
   selected?: boolean;
 }
 
-export function SortableCard({ children, focused, id, label, selected }: SortableCardProps) {
+export function SortableCard({
+  children,
+  focused,
+  id,
+  label,
+  onSelect,
+  rotation,
+  selected,
+}: SortableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     // The drag wrapper is the element the grid's listbox owns, so the option
@@ -70,7 +82,20 @@ export function SortableCard({ children, focused, id, label, selected }: Sortabl
       }}
       {...attributes}
       {...listeners}
-      aria-label={`Reorder ${label}`}
+      onClick={(event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest("button")) {
+          return;
+        }
+
+        event.currentTarget.focus();
+        onSelect?.({
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+        });
+      }}
+      aria-label={`Reorder ${label}${rotation !== 0 ? `, rotation ${rotationDegrees(rotation)}° clockwise` : ""}`}
       aria-selected={selected === true}
     >
       {children}

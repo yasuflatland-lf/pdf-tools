@@ -1,12 +1,14 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PageSlotDto } from "../../bindings/PageSlotDto";
 import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
 import type { SourceFileDto } from "../../bindings/SourceFileDto";
 import { usePlanStore } from "../../store/plan-store";
+import { useSnapshotSync } from "../../store/useSnapshotSync";
 import { useUiStore } from "../../store/ui-store";
 import { PageGrid } from "../PageGrid";
+import { ThumbnailCacheProvider } from "../card/ThumbnailCacheProvider";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
@@ -16,7 +18,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 const mountedRoots: Root[] = [];
 
-function source(id: number, grouping: string, pageCount: number): SourceFileDto {
+function renderWithCache(children: ReactNode): ReactNode {
+  return <ThumbnailCacheProvider>{children}</ThumbnailCacheProvider>;
+}
+
+function source(id: number, grouping: SourceFileDto["grouping"], pageCount: number): SourceFileDto {
   return {
     id,
     path: `/documents/${id}.pdf`,
@@ -33,7 +39,24 @@ function slots(sourceId: number, pageCount: number): PageSlotDto[] {
     id: page + 1,
     source: sourceId,
     page,
+    rotation: 0,
   }));
+}
+
+/**
+ * A grouped five-page PDF followed by an ungrouped five-page source, so a card
+ * can be folded away without touching the cards after it.
+ */
+function loadTwoSources(): void {
+  usePlanStore.getState().setSnapshot({
+    slots: [
+      ...Array.from({ length: 5 }, (_, page) => ({ id: page + 1, source: 10, page, rotation: 0 })),
+      ...Array.from({ length: 5 }, (_, page) => ({ id: page + 6, source: 20, page, rotation: 0 })),
+    ],
+    sources: [source(10, "grouped", 5), source(20, "ungrouped", 5)],
+    can_undo: false,
+    can_redo: false,
+  });
 }
 
 function load(sourceFile: SourceFileDto, pageCount: number): void {
@@ -45,14 +68,19 @@ function load(sourceFile: SourceFileDto, pageCount: number): void {
   });
 }
 
-async function renderGrid(): Promise<HTMLElement> {
+function SnapshotSyncedGrid() {
+  useSnapshotSync();
+  return <PageGrid />;
+}
+
+async function renderGrid(syncSnapshot = false): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   mountedRoots.push(root);
 
   await act(async () => {
-    root.render(<PageGrid />);
+    root.render(renderWithCache(syncSnapshot ? <SnapshotSyncedGrid /> : <PageGrid />));
   });
 
   return container;
@@ -117,6 +145,38 @@ async function pressKey(target: HTMLElement, code: string): Promise<void> {
   });
 }
 
+async function pressArrow(key: string): Promise<void> {
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }));
+  });
+}
+
+function pointerEvent(type: string, clientX: number, clientY: number): MouseEvent {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    button: 0,
+    cancelable: true,
+    clientX,
+    clientY,
+  });
+  Object.defineProperties(event, {
+    isPrimary: { value: true },
+    pointerId: { value: 1 },
+  });
+  return event;
+}
+
+async function click(
+  target: Element,
+  modifiers: Pick<MouseEventInit, "ctrlKey" | "metaKey" | "shiftKey"> = {},
+): Promise<void> {
+  await act(async () => {
+    target.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers }),
+    );
+  });
+}
+
 function stopMeasuringElements(): void {
   for (const [name, descriptor] of measuredProperties) {
     if (descriptor) {
@@ -166,6 +226,34 @@ describe("PageGrid", () => {
     expect(requested).toHaveLength(8);
   });
 
+  // A scroll container's clientWidth excludes its vertical scrollbar; every
+  // element outside it counts the space that scrollbar occupies. macOS overlay
+  // scrollbars hide the difference, Windows WebView2 does not, and 15px is
+  // enough to flip `getColumnCount` at a track boundary -- 1145px is five
+  // columns, 1160px is six, and six columns leave every card under
+  // CARD_MIN_WIDTH. Hence both widths: only measuring the listbox itself gives
+  // five.
+  it("counts columns from the scrolling element, whose width excludes the scrollbar", async () => {
+    load(source(10, "ungrouped", 12), 12);
+
+    const container = await renderGrid();
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]');
+    expect(listbox).not.toBeNull();
+    Object.defineProperty(listbox, "clientWidth", { configurable: true, value: 1145 });
+
+    for (let ancestor = listbox?.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      Object.defineProperty(ancestor, "clientWidth", { configurable: true, value: 1160 });
+      if (ancestor === container) break;
+    }
+
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    const row = container.querySelector<HTMLElement>('[style*="grid-template-columns"]');
+    expect(row?.style.gridTemplateColumns).toBe("repeat(5, minmax(0, 1fr))");
+  });
+
   it("collapses a grouped source into one card that reports its page count", async () => {
     load(source(10, "grouped", 3), 3);
 
@@ -201,6 +289,38 @@ describe("PageGrid", () => {
     expect(container.querySelectorAll("article")).toHaveLength(3);
     expect(container.textContent).toContain("Page 1");
     expect(container.textContent).not.toContain("3 pages");
+  });
+
+  it("keeps an expanded source expanded after a rotate temporarily ungroups it", async () => {
+    const sourceFile = source(10, "grouped", 3);
+    const originalSlots = slots(sourceFile.id, 3);
+    const rotated: PlanSnapshot = {
+      slots: [{ ...originalSlots[0], rotation: 1 }, ...originalSlots.slice(1)],
+      sources: [{ ...sourceFile, grouping: "ungrouped" }],
+      can_undo: true,
+      can_redo: false,
+    };
+    const restored: PlanSnapshot = {
+      slots: originalSlots,
+      sources: [sourceFile],
+      can_undo: true,
+      can_redo: false,
+    };
+    const rotateSnapshots = [rotated, restored];
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(
+        command === "rotate_slots" ? rotateSnapshots.shift() : new Uint8Array([1, 2, 3]),
+      ),
+    );
+    load(sourceFile, 3);
+    const container = await renderGrid(true);
+
+    await click(container.querySelector('[aria-label="Expand 10.pdf"]') as HTMLElement);
+    await click(container.querySelector('[aria-label="Rotate right 10.pdf"]') as HTMLElement);
+    await click(container.querySelector('[aria-label="Rotate left 10.pdf"]') as HTMLElement);
+
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(true);
+    expect(container.querySelectorAll("article")).toHaveLength(3);
   });
 
   it("folds an expanded source back into one card from any of its pages", async () => {
@@ -241,6 +361,44 @@ describe("PageGrid", () => {
     expect(sortable?.style.opacity).toBe("1");
   });
 
+  it("keeps a pointer press on a rotate control away from the drag sensor", async () => {
+    load(source(10, "ungrouped", 1), 1);
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+    const sortable = rotate?.closest<HTMLElement>('[aria-roledescription="sortable"]');
+    layOutSortableCards(container);
+
+    await act(async () => {
+      rotate?.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      await Promise.resolve();
+    });
+
+    expect(sortable?.style.opacity).toBe("1");
+
+    act(() => {
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+    });
+  });
+
+  // The Expand control sits outside the card, so a pointer resting on it is
+  // outside the hover marker inside the card. jsdom applies no stylesheet, so
+  // what the test can check is the one structural condition `.group:hover`
+  // needs: the marked ancestor has to contain the control as well as the
+  // buttons.
+  it("keeps the rotate controls inside the hover scope the expand control sits in", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLElement>('[aria-label="Expand 10.pdf"]');
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+
+    expect(rotate?.parentElement?.className).toContain("group-hover:opacity-100");
+    const hoverScope = expand?.closest(".group");
+    expect(hoverScope).not.toBeNull();
+    expect(hoverScope?.contains(rotate as HTMLElement)).toBe(true);
+  });
+
   it("renders no expand or collapse control for an ungrouped source", async () => {
     load(source(10, "ungrouped", 2), 2);
 
@@ -257,6 +415,189 @@ describe("PageGrid", () => {
 
     expect(container.querySelector('[aria-label^="Expand "]')).toBeNull();
     expect(container.querySelector('[aria-label^="Collapse "]')).toBeNull();
+  });
+
+  it("selects one clicked card and deselects the rest", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    useUiStore.setState({ selectedSlots: new Set([1, 3]) });
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[1]);
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+    expect(options.map((option) => option.getAttribute("aria-selected"))).toEqual([
+      "false",
+      "true",
+      "false",
+    ]);
+  });
+
+  it("toggles one card with Command or Control click without disturbing the others", async () => {
+    load(source(10, "ungrouped", 3), 3);
+    useUiStore.setState({ selectedSlots: new Set([1, 3]) });
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[1], { metaKey: true });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 3, 2]));
+
+    await click(options[1], { ctrlKey: true });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 3]));
+  });
+
+  it("selects the inclusive range between the anchor and a Shift-clicked card", async () => {
+    load(source(10, "ungrouped", 5), 5);
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[1]);
+    await click(options[4], { shiftKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2, 3, 4, 5]));
+  });
+
+  it("shrinks a Shift-clicked range from its original anchor", async () => {
+    load(source(10, "ungrouped", 5), 5);
+    const container = await renderGrid();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options[0]);
+    await click(options[4], { shiftKey: true });
+    await click(options[2], { shiftKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+  });
+
+  // The anchor is an identity, not a position: the card a range is measured
+  // from. Clamping it to an index the way the focus ring is clamped hands the
+  // anchor to whichever unrelated card moved into that index, and the next
+  // Shift-click silently swallows pages of another file.
+  it("drops a selection anchor whose card has been folded away", async () => {
+    loadTwoSources();
+    useUiStore.setState({ expandedSources: new Set([10]) });
+    const container = await renderGrid();
+    const options = () => [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+
+    await click(options()[3]);
+    await click(options()[7], { shiftKey: true });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4, 5, 6, 7, 8]));
+
+    // Collapsing replaces the five page cards with one group card, so the
+    // anchor's key is gone while the focused card is still there -- the focus
+    // repair never runs and cannot rescue the anchor.
+    await act(async () => {
+      useUiStore.getState().toggleExpanded(10);
+    });
+
+    await click(options()[0], { shiftKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3, 4, 5]));
+  });
+
+  it("starts a drag after pointer movement without changing the selection", async () => {
+    load(source(10, "ungrouped", 2), 2);
+    useUiStore.setState({ selectedSlots: new Set([2]) });
+    const container = await renderGrid();
+    const cards = layOutSortableCards(container);
+
+    await act(async () => {
+      cards[0].dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      await Promise.resolve();
+    });
+
+    expect(cards[0].style.opacity).toBe("0.4");
+
+    await act(async () => {
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+      cards[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      // dnd-kit removes its capture-phase click suppressor 50ms after a drag.
+      // Let that cleanup finish so it cannot swallow a later test's click.
+      await new Promise((resolve) => setTimeout(resolve, 64));
+    });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+  });
+
+  it("selects every slot represented by a clicked collapsed card", async () => {
+    load(source(10, "grouped", 3), 3);
+    const container = await renderGrid();
+    const caption = container.querySelector<HTMLElement>('article p[title="10.pdf"]');
+
+    expect(caption).not.toBeNull();
+    await click(caption as HTMLElement);
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("completes a partially selected collapsed card with Command-click", async () => {
+    load(source(10, "grouped", 3), 3);
+    useUiStore.setState({ selectedSlots: new Set([1, 3]) });
+    const container = await renderGrid();
+    const option = container.querySelector<HTMLElement>('[role="option"]');
+
+    expect(option?.getAttribute("aria-selected")).toBe("false");
+    await click(option as HTMLElement, { metaKey: true });
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+    expect(option?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  // A collapsed group card is the default state of every multi-page PDF, and its
+  // preview is most of the card. A control painted across that preview takes
+  // every click on it -- an ordinary click, a Command-click, and the Shift-click
+  // that was meant to end a range -- so the card expands instead of being
+  // selected. jsdom hit-tests nothing, so a click dispatched on the thumbnail
+  // reaches the card whatever paints above it; what the test can check is the
+  // geometry the control's own classes describe.
+  it("leaves the collapsed card's preview selectable instead of blanketing it", async () => {
+    load(source(10, "grouped", 3), 3);
+
+    const container = await renderGrid();
+    const expand = container.querySelector<HTMLElement>('[aria-label="Expand 10.pdf"]');
+
+    expect(expand).not.toBeNull();
+    // `h-60` is the preview area's own height and `inset-x-0` its full width.
+    expect(expand?.className).not.toContain("h-60");
+    expect(expand?.className).not.toContain("inset-x-0");
+
+    await click(container.querySelector("img") as HTMLElement);
+
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([1, 2, 3]));
+    expect(useUiStore.getState().expandedSources.has(10)).toBe(false);
+  });
+
+  it("keeps a rotate-button press away from selection and drag state", async () => {
+    const sourceFile = source(10, "ungrouped", 2);
+    const rotated: PlanSnapshot = {
+      slots: [{ ...slots(sourceFile.id, 2)[0], rotation: 1 }, slots(sourceFile.id, 2)[1]],
+      sources: [sourceFile],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "rotate_slots" ? rotated : new Uint8Array([1, 2, 3])),
+    );
+    load(sourceFile, 2);
+    useUiStore.setState({ selectedSlots: new Set([2]) });
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLElement>('[aria-label="Rotate right 10.pdf"]');
+    const sortable = rotate?.closest<HTMLElement>('[aria-roledescription="sortable"]');
+    layOutSortableCards(container);
+
+    await act(async () => {
+      rotate?.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+      document.dispatchEvent(pointerEvent("pointermove", 30, 10));
+      document.dispatchEvent(pointerEvent("pointerup", 30, 10));
+      rotate?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(invoke).toHaveBeenCalledWith("rotate_slots", { slotIds: [1], delta: 1 });
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
+    expect(sortable?.style.opacity).toBe("1");
   });
 
   it("moves focus and selection to a card with the arrow keys", async () => {
@@ -276,6 +617,143 @@ describe("PageGrid", () => {
     expect(document.activeElement?.getAttribute("role")).toBe("option");
     expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
     expect(useUiStore.getState().selectedSlots).toEqual(new Set([1]));
+  });
+
+  it("keeps focus on the same slot when an earlier card is deleted", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    load(sourceFile, 5);
+    await renderGrid();
+
+    for (let index = 0; index < 4; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: originalSlots.slice(1),
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    expect(document.activeElement?.textContent).toContain("Page 4");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+  });
+
+  it("selects the replacement card when the focused card is deleted", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    load(sourceFile, 5);
+    await renderGrid();
+
+    for (let index = 0; index < 3; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: originalSlots.filter((slot) => slot.id !== 3),
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    expect(document.activeElement?.textContent).toContain("Page 4");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+  });
+
+  it("keeps focus and selection on the replacement card after undo", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    load(sourceFile, 5);
+    await renderGrid();
+
+    for (let index = 0; index < 3; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: originalSlots.filter((slot) => slot.id !== 3),
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: originalSlots,
+        sources: [sourceFile],
+        can_undo: false,
+        can_redo: true,
+      });
+    });
+
+    expect(document.activeElement?.textContent).toContain("Page 4");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+  });
+
+  it("keeps focus and selection on the replacement card after an unrelated reorder", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    const slotsAfterDelete = originalSlots.filter((slot) => slot.id !== 3);
+    load(sourceFile, 5);
+    await renderGrid();
+
+    for (let index = 0; index < 3; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: slotsAfterDelete,
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: [...slotsAfterDelete.slice(1), slotsAfterDelete[0]],
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    expect(document.activeElement?.textContent).toContain("Page 4");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([4]));
+  });
+
+  it("follows a focused card when it is reordered to the end", async () => {
+    const sourceFile = source(10, "ungrouped", 5);
+    const originalSlots = slots(sourceFile.id, 5);
+    load(sourceFile, 5);
+    const container = await renderGrid();
+
+    for (let index = 0; index < 3; index += 1) {
+      await pressArrow("ArrowRight");
+    }
+
+    await act(async () => {
+      usePlanStore.getState().setSnapshot({
+        slots: [...originalSlots.slice(0, 2), ...originalSlots.slice(3), originalSlots[2]],
+        sources: [sourceFile],
+        can_undo: true,
+        can_redo: false,
+      });
+    });
+
+    const options = container.querySelectorAll('[role="option"]');
+    expect(options[4]).toBe(document.activeElement);
+    expect(options[4]?.textContent).toContain("Page 3");
+    expect(useUiStore.getState().selectedSlots).toEqual(new Set([3]));
   });
 
   // `aria-selected` is only announced on an option the listbox owns. Any role
@@ -300,12 +778,72 @@ describe("PageGrid", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toBe("blob:thumbnail");
   });
 
+  it("rotates a card thumbnail immediately without rasterizing it again", async () => {
+    const rotated: PlanSnapshot = {
+      slots: [{ id: 1, source: 10, page: 0, rotation: 1 }],
+      sources: [source(10, "ungrouped", 1)],
+      can_undo: true,
+      can_redo: false,
+    };
+    invoke.mockImplementation((command: string) =>
+      Promise.resolve(command === "rotate_slots" ? rotated : new Uint8Array([1, 2, 3])),
+    );
+    load(source(10, "ungrouped", 1), 1);
+    const container = await renderGrid();
+    const rotate = container.querySelector<HTMLButtonElement>('[aria-label="Rotate right 10.pdf"]');
+
+    await act(async () => {
+      rotate?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(invoke.mock.calls.filter((call) => call[0] === "rotate_slots")).toEqual([
+      ["rotate_slots", { slotIds: [1], delta: 1 }],
+    ]);
+    expect(container.querySelector("img")?.style.transform).toContain("rotate(90deg)");
+    expect(invoke.mock.calls.filter((call) => call[0] === "rasterize_slot")).toHaveLength(1);
+    expect(container.querySelector('[role="option"]')?.getAttribute("aria-label")).toContain(
+      "90° clockwise",
+    );
+  });
+
+  // The card's frame is fixed, so a quarter turn -- which exchanges the image
+  // box's axes -- has to be paired with a scale, or the turned thumbnail is
+  // clipped by the preview it overflows.
+  it("scales a quarter-turned thumbnail down to fit the fixed preview area", async () => {
+    // The stubbed preview measures 800x600, so a turned 600x800 box fits only
+    // at min(800/600, 600/800); an upright or half-turned page needs no scale.
+    const expectedScale = new Map([
+      [0, "1"],
+      [1, "0.75"],
+      [2, "1"],
+      [3, "0.75"],
+    ]);
+
+    for (const [rotation, scale] of expectedScale) {
+      usePlanStore.getState().setSnapshot({
+        slots: [{ id: 1, source: 10, page: 0, rotation }],
+        sources: [source(10, "ungrouped", 1)],
+        can_undo: false,
+        can_redo: false,
+      });
+
+      const container = await renderGrid();
+      const thumbnail = container.querySelector("img");
+
+      expect(thumbnail?.style.transform).toContain(`rotate(${rotation * 90}deg)`);
+      expect(thumbnail?.parentElement?.style.getPropertyValue("--thumbnail-rotation-scale")).toBe(
+        scale,
+      );
+    }
+  });
+
   it("sends exactly one reorder command when a card is dropped on another", async () => {
     const reordered: PlanSnapshot = {
       slots: [
-        { id: 2, source: 10, page: 1 },
-        { id: 1, source: 10, page: 0 },
-        { id: 3, source: 10, page: 2 },
+        { id: 2, source: 10, page: 1, rotation: 0 },
+        { id: 1, source: 10, page: 0, rotation: 0 },
+        { id: 3, source: 10, page: 2, rotation: 0 },
       ],
       sources: [source(10, "ungrouped", 3)],
       can_undo: true,
@@ -337,5 +875,14 @@ describe("PageGrid", () => {
 
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector('[aria-label="Thumbnail unavailable"]')).not.toBeNull();
+  });
+
+  it("shows a visible badge when a thumbnail cannot be rendered", async () => {
+    invoke.mockRejectedValue(new Error("boom"));
+    load(source(10, "grouped", 1), 1);
+
+    const container = await renderGrid();
+
+    expect(container.textContent).toContain("Thumbnail unavailable");
   });
 });

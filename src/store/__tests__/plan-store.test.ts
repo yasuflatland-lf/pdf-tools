@@ -1,32 +1,21 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import type { SourceFileDto } from "../../bindings/SourceFileDto";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PlanSnapshot } from "../../bindings/PlanSnapshot";
 import { createPlanStore } from "../plan-store";
-import { useUiStore } from "../ui-store";
 
-function source(id: number, grouping: string): SourceFileDto {
-  return {
-    id,
-    path: `/documents/${id}.pdf`,
-    file_name: `${id}.pdf`,
-    kind: "pdf",
-    grouping,
-    page_count: 3,
-    status: { kind: "ready" },
-  };
-}
+const { rotateSlots } = vi.hoisted(() => ({ rotateSlots: vi.fn() }));
 
-// `setSnapshot` reaches into the singleton UI store, so each test starts from a
-// known expansion state rather than whatever the previous one left behind.
-beforeEach(() => {
-  useUiStore.setState({ expandedSources: new Set(), selectedSlots: new Set() });
-});
+vi.mock("../../lib/tauri-api", () => ({ rotateSlots }));
 
 describe("createPlanStore", () => {
+  beforeEach(() => {
+    rotateSlots.mockReset();
+  });
+
   it("replaces its contents with the snapshot returned by Rust", () => {
     const store = createPlanStore();
 
     store.getState().setSnapshot({
-      slots: [{ id: 1, source: 10, page: 0 }],
+      slots: [{ id: 1, source: 10, page: 0, rotation: 0 }],
       sources: [],
       can_undo: false,
       can_redo: false,
@@ -37,7 +26,7 @@ describe("createPlanStore", () => {
     expect(store.getState().canRedo).toBe(false);
   });
 
-  it("never mutates the plan locally", () => {
+  it("only exposes snapshot-backed plan mutations", () => {
     const store = createPlanStore();
 
     expect(Object.keys(store.getState())).toEqual([
@@ -46,75 +35,24 @@ describe("createPlanStore", () => {
       "canUndo",
       "canRedo",
       "setSnapshot",
+      "rotate",
     ]);
   });
 
-  it("prunes expansion state on every snapshot update", () => {
-    useUiStore.getState().toggleExpanded(10);
+  it("rotates the selected slot ids through Rust and replaces the snapshot", async () => {
     const store = createPlanStore();
-
-    store.getState().setSnapshot({
-      slots: [],
+    const snapshot: PlanSnapshot = {
+      slots: [{ id: 2, source: 10, page: 0, rotation: 3 }],
       sources: [],
-      can_undo: false,
-      can_redo: true,
-    });
-
-    expect(useUiStore.getState().expandedSources.size).toBe(0);
-    expect(store.getState().canRedo).toBe(true);
-  });
-
-  it("drops selected slots that the snapshot no longer contains", () => {
-    useUiStore.getState().selectSlots([1, 2]);
-    const store = createPlanStore();
-
-    store.getState().setSnapshot({
-      slots: [{ id: 2, source: 10, page: 1 }],
-      sources: [source(10, "grouped")],
       can_undo: true,
       can_redo: false,
-    });
+    };
+    rotateSlots.mockResolvedValue(snapshot);
 
-    expect(useUiStore.getState().selectedSlots).toEqual(new Set([2]));
-  });
+    await store.getState().rotate([2, 4], -1);
 
-  it("re-collapses a source that is grouped again after being ungrouped", () => {
-    const store = createPlanStore();
-    useUiStore.getState().toggleExpanded(10);
-
-    // Dropping an image between the pages ungroups the source ...
-    store.getState().setSnapshot({
-      slots: [],
-      sources: [source(10, "ungrouped")],
-      can_undo: true,
-      can_redo: false,
-    });
-    expect(useUiStore.getState().expandedSources.size).toBe(0);
-
-    // ... and deleting that image groups it again, back to a single card.
-    store.getState().setSnapshot({
-      slots: [],
-      sources: [source(10, "grouped")],
-      can_undo: true,
-      can_redo: false,
-    });
-
-    expect(useUiStore.getState().expandedSources.has(10)).toBe(false);
-  });
-});
-
-describe("useUiStore", () => {
-  it("starts with the UI-only selections and grid view", () => {
-    expect(useUiStore.getState()).toEqual({
-      expandedSources: new Set(),
-      selectedSlots: new Set(),
-      viewMode: "grid",
-      setViewMode: expect.any(Function),
-      toggleExpanded: expect.any(Function),
-      pruneExpanded: expect.any(Function),
-      selectSlots: expect.any(Function),
-      clearSelection: expect.any(Function),
-      pruneSelected: expect.any(Function),
-    });
+    expect(rotateSlots).toHaveBeenCalledWith([2, 4], -1);
+    expect(store.getState().slots).toBe(snapshot.slots);
+    expect(store.getState().canUndo).toBe(true);
   });
 });

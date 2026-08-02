@@ -16,7 +16,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    // TypeScript 7 rejects a side-effect import with no declaration (TS2882),
+    // which is what `import "./index.css"` in main.tsx is. Vite's own ambient
+    // types declare the asset modules the bundler resolves at build time.
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

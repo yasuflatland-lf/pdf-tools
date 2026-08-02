@@ -5,16 +5,17 @@ use std::time::Duration;
 
 use pdf_tools_core::application::compose::ProgressSink;
 use pdf_tools_core::application::errors::PdfError;
-use pdf_tools_core::application::ports::{ComposePlan, MergeReport, PdfEngine};
+use pdf_tools_core::application::ports::{ComposeEntry, ComposePlan, MergeReport, PdfEngine};
 use pdf_tools_core::domain::geometry::{PageSize, RasterImage, RasterSpec};
 use pdf_tools_core::domain::ids::PageIndex;
 use pdf_tools_core::domain::source::{DocumentInfo, ImageInfo};
 use pdf_tools_core::infrastructure::fake_engine::{FakeImageDecoder, FakePdfEngine};
 use pdf_tools_lib::presentation::commands::{
-    add_sources_inner, compose_inner, insert_at_inner, rasterize_slot_inner, redo_inner,
-    remove_slots_inner, reorder_inner, undo_inner,
+    add_sources_inner, compose_inner, expand_paths_inner, rasterize_slot_inner, redo_inner,
+    remove_slots_inner, remove_source_inner, reorder_inner, rotate_slots_inner,
+    supported_extensions_inner, undo_inner,
 };
-use pdf_tools_lib::presentation::dto::PlanSnapshot;
+use pdf_tools_lib::presentation::dto::{GroupingDto, PlanSnapshot, SourceKindDto};
 use pdf_tools_lib::presentation::state::AppState;
 use tempfile::TempDir;
 
@@ -42,7 +43,19 @@ impl PdfEngine for WritingPdfEngine {
         self.inner.rasterize(src, page, spec)
     }
 
+    /// Mirrors `PdfiumEngine`: each entry's source is opened as the document is
+    /// assembled, so one that has vanished fails the merge, and it fails before
+    /// the destination is written rather than leaving a partial file behind.
     fn compose(&self, plan: &ComposePlan, dest: &Path) -> Result<MergeReport, PdfError> {
+        for entry in &plan.entries {
+            let path = match entry {
+                ComposeEntry::PdfPage { path, .. } | ComposeEntry::Image { path, .. } => path,
+            };
+            if !path.is_file() {
+                return Err(PdfError::Missing { path: path.clone() });
+            }
+        }
+
         let report = self.inner.compose(plan, dest)?;
         let bytes = b"%PDF-1.7\n%%EOF\n";
         std::fs::write(dest, bytes).map_err(|error| PdfError::WriteFailed {
@@ -53,6 +66,32 @@ impl PdfEngine for WritingPdfEngine {
             page_count: report.page_count,
             bytes_written: bytes.len() as u64,
         })
+    }
+}
+
+struct RasterizeFailurePdfEngine {
+    inner: FakePdfEngine,
+}
+
+impl PdfEngine for RasterizeFailurePdfEngine {
+    fn probe(&self, src: &Path) -> Result<DocumentInfo, PdfError> {
+        self.inner.probe(src)
+    }
+
+    fn rasterize(
+        &self,
+        _src: &Path,
+        page: PageIndex,
+        _spec: RasterSpec,
+    ) -> Result<RasterImage, PdfError> {
+        Err(PdfError::PageOutOfRange {
+            page: page.0,
+            count: 1,
+        })
+    }
+
+    fn compose(&self, plan: &ComposePlan, dest: &Path) -> Result<MergeReport, PdfError> {
+        self.inner.compose(plan, dest)
     }
 }
 
@@ -145,6 +184,14 @@ fn pdf_info() -> DocumentInfo {
     }
 }
 
+fn document(page_count: u32) -> DocumentInfo {
+    DocumentInfo {
+        page_count,
+        page_sizes: vec![PageSize::A4_PORTRAIT; page_count as usize],
+        encrypted: false,
+    }
+}
+
 fn add_sources(state: &AppState, paths: &[PathBuf]) -> u64 {
     add_sources_inner(
         state,
@@ -187,8 +234,8 @@ fn state_with_missing_source() -> AppState {
         .sources()
         .first()
         .expect("the state should contain a source")
-        .path
-        .clone();
+        .path()
+        .to_path_buf();
     std::fs::remove_file(source).expect("source fixture should be removed");
     state
 }
@@ -197,7 +244,7 @@ fn snapshot_of(state: &AppState) -> PlanSnapshot {
     PlanSnapshot::from_session(&state.session())
 }
 
-fn state_with_pdf_and_image() -> (AppState, u64) {
+fn state_with_pdf_and_image() -> AppState {
     let state = AppState::with_engines(
         Arc::new(FakePdfEngine::new().with_document(
             "/document.pdf",
@@ -216,9 +263,8 @@ fn state_with_pdf_and_image() -> (AppState, u64) {
         )),
     );
     add_sources_inner(&state, vec!["/document.pdf".into()]).unwrap();
-    let snapshot = add_sources_inner(&state, vec!["/image.png".into()]).unwrap();
-    let image_slot_id = snapshot.slots.last().expect("image slot").id;
-    (state, image_slot_id)
+    add_sources_inner(&state, vec!["/image.png".into()]).unwrap();
+    state
 }
 
 fn png_width(bytes: &[u8]) -> u32 {
@@ -237,6 +283,44 @@ fn reorder_returns_a_snapshot_in_the_new_order() {
 }
 
 #[test]
+fn rotate_slots_returns_a_snapshot_carrying_the_new_rotation() {
+    let state = state_with_pdf(2);
+    let slot_id = snapshot_of(&state).slots[0].id;
+
+    let snapshot = rotate_slots_inner(&state, vec![slot_id, u64::MAX], 5).unwrap();
+
+    assert_eq!(snapshot.slots[0].rotation, 1);
+    assert_eq!(snapshot.slots[1].rotation, 0);
+}
+
+#[test]
+fn rotate_slots_accepts_a_negative_delta() {
+    let state = state_with_pdf(1);
+    let slot_id = snapshot_of(&state).slots[0].id;
+
+    let negative = rotate_slots_inner(&state, vec![slot_id], -1).unwrap();
+    assert_eq!(negative.slots[0].rotation, 3);
+
+    undo_inner(&state).unwrap();
+    let positive = rotate_slots_inner(&state, vec![slot_id], 3).unwrap();
+    assert_eq!(negative, positive);
+}
+
+#[test]
+fn a_no_op_rotation_leaves_can_undo_unchanged() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new()),
+        Arc::new(FakeImageDecoder::new()),
+    );
+    let before = snapshot_of(&state);
+
+    let snapshot = rotate_slots_inner(&state, vec![u64::MAX], 1).unwrap();
+
+    assert_eq!(snapshot.can_undo, before.can_undo);
+    assert!(!snapshot.can_undo);
+}
+
+#[test]
 fn undo_flags_reflect_the_history() {
     let state = state_with_pdf(3);
     let snapshot = remove_slots_inner(&state, vec![0]).unwrap();
@@ -244,6 +328,37 @@ fn undo_flags_reflect_the_history() {
     assert!(!snapshot.can_redo);
     let snapshot = undo_inner(&state).unwrap();
     assert!(snapshot.can_redo);
+}
+
+#[test]
+fn remove_source_returns_a_snapshot_without_that_source() {
+    let state = state_with_pdf(2);
+    let source_id = snapshot_of(&state).sources[0].id;
+
+    let snapshot = remove_source_inner(&state, source_id).unwrap();
+
+    assert!(snapshot.sources.is_empty());
+    assert!(snapshot.slots.is_empty());
+    assert!(snapshot.can_undo);
+}
+
+#[test]
+fn removing_an_unknown_source_returns_the_unchanged_snapshot_without_history() {
+    // The document has to hold something for the comparison below to protect
+    // anything: against an empty one, a command that wiped the plan would pass.
+    let state = state_with_pdf_and_image();
+    let before = snapshot_of(&state);
+    assert_eq!(before.sources.len(), 2);
+    assert_eq!(before.slots.len(), 4);
+
+    let snapshot = remove_source_inner(&state, u64::MAX).unwrap();
+
+    assert_eq!(snapshot, before);
+    // The no-op parked no history entry, so this single Undo reaches the image
+    // add rather than undoing the removal that never happened.
+    let undone = undo_inner(&state).unwrap();
+    assert_eq!(undone.sources.len(), 1);
+    assert_eq!(undone.slots.len(), 3);
 }
 
 #[test]
@@ -274,15 +389,16 @@ fn undo_on_a_fresh_state_is_a_no_op() {
 }
 
 #[test]
-fn inserting_inside_a_group_marks_the_source_ungrouped_in_the_snapshot() {
-    let (state, image_slot_id) = state_with_pdf_and_image();
-    let snapshot = insert_at_inner(&state, 1, vec![image_slot_id]).unwrap();
+fn dragging_a_slot_inside_a_group_marks_the_source_ungrouped_in_the_snapshot() {
+    let state = state_with_pdf_and_image();
+    let trailing_index = state.session().plan().len() - 1;
+    let snapshot = reorder_inner(&state, trailing_index, trailing_index + 1, 1).unwrap();
     let pdf_source = snapshot
         .sources
         .iter()
-        .find(|source| source.kind == "pdf")
+        .find(|source| source.kind == SourceKindDto::Pdf)
         .unwrap();
-    assert_eq!(pdf_source.grouping, "ungrouped");
+    assert_eq!(pdf_source.grouping, GroupingDto::Ungrouped);
 }
 
 #[test]
@@ -291,7 +407,55 @@ fn add_sources_returns_a_snapshot_containing_the_new_slots() {
     let snapshot = add_sources_inner(&state, vec!["/a.pdf".into()]).unwrap();
 
     assert_eq!(snapshot.slots.len(), 3);
-    assert_eq!(snapshot.sources[0].kind, "pdf");
+    assert_eq!(snapshot.sources[0].kind, SourceKindDto::Pdf);
+}
+
+#[test]
+fn supported_extensions_returns_every_mergeable_format() {
+    assert_eq!(
+        supported_extensions_inner(),
+        ["pdf", "jpg", "jpeg", "png", "gif"]
+    );
+}
+
+#[test]
+fn expand_paths_drops_an_unsupported_file() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new()),
+        Arc::new(FakeImageDecoder::new()),
+    );
+
+    let expanded = expand_paths_inner(&state, vec!["/a/notes.txt".into()]).unwrap();
+
+    assert!(expanded.is_empty());
+}
+
+#[test]
+fn a_panic_while_the_session_is_locked_does_not_lose_the_document() {
+    let state = AppState::with_engines(
+        Arc::new(FakePdfEngine::new().with_document("/a.pdf", document(2))),
+        Arc::new(FakeImageDecoder::new()),
+    );
+    add_sources_inner(&state, vec!["/a.pdf".into()]).unwrap();
+
+    // A command that panics while holding the guard poisons the mutex. The next
+    // command must still see the document as it stood before the panic.
+    let panicked = std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                let _guard = state.session();
+                panic!("a command panicked while holding the session");
+            })
+            .join()
+    });
+    assert!(
+        panicked.is_err(),
+        "the spawned command should have panicked"
+    );
+
+    let snapshot = add_sources_inner(&state, vec!["/a.pdf".into()]).unwrap();
+    assert_eq!(snapshot.slots.len(), 4);
+    assert_eq!(snapshot.sources.len(), 2);
 }
 
 #[test]
@@ -349,14 +513,9 @@ fn rasterize_slot_returns_png_bytes_for_an_image_source() {
 #[test]
 fn rasterize_slot_surfaces_a_rasterize_failure() {
     let state = AppState::with_engines(
-        Arc::new(FakePdfEngine::new().with_document(
-            "/known.pdf",
-            DocumentInfo {
-                page_count: 1,
-                page_sizes: vec![],
-                encrypted: false,
-            },
-        )),
+        Arc::new(RasterizeFailurePdfEngine {
+            inner: FakePdfEngine::new().with_document("/known.pdf", pdf_info()),
+        }),
         Arc::new(FakeImageDecoder::new()),
     );
     let slot_id = add_sources(&state, &[PathBuf::from("/known.pdf")]);

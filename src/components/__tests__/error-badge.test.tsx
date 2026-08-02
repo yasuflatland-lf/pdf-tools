@@ -1,6 +1,6 @@
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ErrorBadge } from "../ErrorBadge";
 import { SourceErrorCard } from "../PageCard";
 
@@ -34,15 +34,18 @@ describe("ErrorBadge", () => {
   it("shows a password-required badge for encrypted sources", async () => {
     const container = await render(<ErrorBadge status={{ kind: "encrypted" }} />);
 
-    expect(container.textContent).toMatch(/パスワード/);
+    expect(container.textContent).toMatch(/Password protected/);
   });
 
-  it("shows the reason for unreadable sources", async () => {
-    const container = await render(
-      <ErrorBadge status={{ kind: "unreadable", reason: "broken xref" }} />,
-    );
+  it.each([
+    ["unsupportedFormat", "This file format is not supported"],
+    ["damaged", "This file is damaged and could not be read"],
+    ["missing", "This file could not be found"],
+    ["engineUnavailable", "The PDF engine is unavailable"],
+  ] as const)("shows the message for the %s unreadable reason", async (reason, message) => {
+    const container = await render(<ErrorBadge status={{ kind: "unreadable", reason }} />);
 
-    expect(container.textContent).toContain("broken xref");
+    expect(container.textContent).toBe(message);
   });
 
   it("renders nothing for ready sources", async () => {
@@ -55,13 +58,37 @@ describe("ErrorBadge", () => {
     const container = await render(
       <SourceErrorCard
         fileName="damaged.pdf"
-        status={{ kind: "unreadable", reason: "broken xref" }}
+        onDismiss={() => {}}
+        status={{ kind: "unreadable", reason: "damaged" }}
       />,
     );
     const card = container.querySelector("article");
 
     expect(card?.classList.contains("opacity-60")).toBe(true);
     expect(container.textContent).toContain("damaged.pdf");
-    expect(container.textContent).toContain("broken xref");
+    expect(container.textContent).toContain("This file is damaged and could not be read");
+  });
+
+  it("stops a keydown on the Remove control from reaching an ancestor", async () => {
+    const onKeyDown = vi.fn();
+    const container = await render(
+      <div onKeyDown={onKeyDown}>
+        <SourceErrorCard
+          fileName="damaged.pdf"
+          onDismiss={() => {}}
+          status={{ kind: "unreadable", reason: "damaged" }}
+        />
+      </div>,
+    );
+    const remove = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Remove damaged.pdf"]',
+    );
+    if (!remove) throw new Error("Expected the Remove button");
+
+    await act(async () => {
+      remove.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Delete" }));
+    });
+
+    expect(onKeyDown).not.toHaveBeenCalled();
   });
 });

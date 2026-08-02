@@ -2,10 +2,10 @@
 # Install rustfmt and clippy alongside rust so CI (mise-action) has them.
 # llvm-tools-preview is required by cargo-llvm-cov for source-based coverage.
 rust = { version = "1.97.1", components = "rustfmt,clippy,llvm-tools-preview" }
-node = "24.18.0"
-pnpm = "11.17.0"
+node = "24.18.1"
+pnpm = "11.18.0"
 cargo-binstall = "1.21.1"
-"cargo:cargo-nextest" = "0.9.137"
+"cargo:cargo-nextest" = "0.9.140"
 "cargo:cargo-llvm-cov" = "0.8.7"
 
 [settings]
@@ -23,6 +23,14 @@ run = ["cargo fmt --all --check", "pnpm oxfmt --check"]
 [tasks.test]
 description = "Run all tests"
 run = ["cargo nextest run --workspace", "pnpm vitest run"]
+
+[tasks.gen-icons]
+description = "Regenerate the bundle icons from public/logo.svg"
+run = [
+  "pnpm tauri icon public/logo.svg",
+  # The app ships to macOS and Windows only, so the mobile sets are dead weight.
+  "rm -rf src-tauri/icons/android src-tauri/icons/ios",
+]
 
 [tasks.fetch-pdfium]
 description = "Download and verify the pinned PDFium binary"

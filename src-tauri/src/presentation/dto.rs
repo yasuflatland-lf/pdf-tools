@@ -1,7 +1,7 @@
 use pdf_tools_core::application::ports::MergeReport;
 use pdf_tools_core::application::session::PlanSession;
 use pdf_tools_core::domain::plan::PageSlot;
-use pdf_tools_core::domain::source::{Grouping, SourceFile, SourceKind, SourceStatus};
+use pdf_tools_core::domain::source::{SourceFile, SourceKind, SourceStatus, UnreadableReason};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -44,10 +44,10 @@ pub struct PageSlotDto {
     #[ts(type = "number")]
     pub source: u64,
     pub page: u32,
+    pub rotation: u8,
 }
 
-/// A source file and the metadata the UI needs to label it. `kind` is `"pdf"`
-/// or `"image"`; `grouping` is `"grouped"` or `"ungrouped"`; `file_name` is the
+/// A source file and the metadata the UI needs to label it. `file_name` is the
 /// final path component, for display when the full path is too long.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
@@ -56,10 +56,36 @@ pub struct SourceFileDto {
     pub id: u64,
     pub path: String,
     pub file_name: String,
-    pub kind: String,
-    pub grouping: String,
+    pub kind: SourceKindDto,
+    pub grouping: GroupingDto,
     pub page_count: u32,
     pub status: SourceStatusDto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/bindings/", rename_all = "lowercase")]
+pub enum SourceKindDto {
+    Pdf,
+    Image,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/bindings/", rename_all = "lowercase")]
+pub enum GroupingDto {
+    Grouped,
+    Ungrouped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/", rename_all = "camelCase")]
+pub enum UnreadableReasonDto {
+    UnsupportedFormat,
+    Damaged,
+    Missing,
+    EngineUnavailable,
 }
 
 /// Why a source does or does not contribute pages. Tagged so TypeScript can
@@ -70,7 +96,7 @@ pub struct SourceFileDto {
 pub enum SourceStatusDto {
     Ready,
     Encrypted,
-    Unreadable { reason: String },
+    Unreadable { reason: UnreadableReasonDto },
 }
 
 impl PlanSnapshot {
@@ -83,7 +109,18 @@ impl PlanSnapshot {
                 .iter()
                 .map(PageSlotDto::from)
                 .collect(),
-            sources: session.sources().iter().map(SourceFileDto::from).collect(),
+            sources: session
+                .sources()
+                .iter()
+                .map(|source| {
+                    let grouping = if session.is_grouped(source.id()) {
+                        GroupingDto::Grouped
+                    } else {
+                        GroupingDto::Ungrouped
+                    };
+                    SourceFileDto::project(source, grouping)
+                })
+                .collect(),
             can_undo: session.can_undo(),
             can_redo: session.can_redo(),
         }
@@ -96,35 +133,31 @@ impl From<&PageSlot> for PageSlotDto {
             id: slot.id.0,
             source: slot.source.0,
             page: slot.page.0,
+            rotation: slot.rotation.quarter_turns(),
         }
     }
 }
 
-impl From<&SourceFile> for SourceFileDto {
-    fn from(source: &SourceFile) -> Self {
-        let path = source.path.to_string_lossy().into_owned();
+impl SourceFileDto {
+    fn project(source: &SourceFile, grouping: GroupingDto) -> Self {
+        let path = source.path().to_string_lossy().into_owned();
         let file_name = source
-            .path
+            .path()
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.clone());
 
         Self {
-            id: source.id.0,
+            id: source.id().0,
             path,
             file_name,
-            kind: match source.kind {
-                SourceKind::Pdf => "pdf",
-                SourceKind::Image => "image",
-            }
-            .into(),
-            grouping: match source.grouping {
-                Grouping::Grouped => "grouped",
-                Grouping::Ungrouped => "ungrouped",
-            }
-            .into(),
-            page_count: source.page_count,
-            status: SourceStatusDto::from(&source.status),
+            kind: match source.kind() {
+                SourceKind::Pdf => SourceKindDto::Pdf,
+                SourceKind::Image => SourceKindDto::Image,
+            },
+            grouping,
+            page_count: source.page_count(),
+            status: SourceStatusDto::from(&source.status()),
         }
     }
 }
@@ -134,9 +167,20 @@ impl From<&SourceStatus> for SourceStatusDto {
         match status {
             SourceStatus::Ready => Self::Ready,
             SourceStatus::Encrypted => Self::Encrypted,
-            SourceStatus::Unreadable { reason } => Self::Unreadable {
-                reason: reason.clone(),
+            SourceStatus::Unreadable(reason) => Self::Unreadable {
+                reason: (*reason).into(),
             },
+        }
+    }
+}
+
+impl From<UnreadableReason> for UnreadableReasonDto {
+    fn from(reason: UnreadableReason) -> Self {
+        match reason {
+            UnreadableReason::UnsupportedFormat => Self::UnsupportedFormat,
+            UnreadableReason::Damaged => Self::Damaged,
+            UnreadableReason::Missing => Self::Missing,
+            UnreadableReason::EngineUnavailable => Self::EngineUnavailable,
         }
     }
 }
@@ -154,43 +198,56 @@ impl From<MergeReport> for MergeReportDto {
 mod tests {
     use std::path::PathBuf;
 
+    use pdf_tools_core::domain::geometry::PageSize;
     use pdf_tools_core::domain::ids::SourceId;
 
     use super::*;
 
     fn source(path: &str, kind: SourceKind, status: SourceStatus) -> SourceFile {
-        SourceFile {
-            id: SourceId(7),
-            path: PathBuf::from(path),
-            kind,
-            grouping: Grouping::Ungrouped,
-            page_count: 2,
-            page_sizes: Vec::new(),
-            status,
+        match (kind, status) {
+            (SourceKind::Pdf, SourceStatus::Ready) => SourceFile::ready_pdf(
+                SourceId(7),
+                PathBuf::from(path),
+                vec![PageSize::A4_PORTRAIT; 2],
+            ),
+            (SourceKind::Image, SourceStatus::Ready) => {
+                SourceFile::ready_image(SourceId(7), PathBuf::from(path))
+            }
+            (_, status) => SourceFile::failed(SourceId(7), PathBuf::from(path), kind, status),
         }
     }
 
     #[test]
     fn a_source_is_projected_onto_the_wire_contract() {
-        let dto = SourceFileDto::from(&source(
-            "/deep/dir/invoice.pdf",
-            SourceKind::Pdf,
-            SourceStatus::Ready,
-        ));
+        let dto = SourceFileDto::project(
+            &source(
+                "/deep/dir/invoice.pdf",
+                SourceKind::Pdf,
+                SourceStatus::Ready,
+            ),
+            GroupingDto::Ungrouped,
+        );
 
         assert_eq!(dto.id, 7);
         assert_eq!(dto.path, "/deep/dir/invoice.pdf");
         assert_eq!(dto.file_name, "invoice.pdf");
-        assert_eq!(dto.kind, "pdf");
-        assert_eq!(dto.grouping, "ungrouped");
+        assert_eq!(dto.kind, SourceKindDto::Pdf);
+        assert_eq!(dto.grouping, GroupingDto::Ungrouped);
         assert_eq!(dto.page_count, 2);
         assert_eq!(dto.status, SourceStatusDto::Ready);
+
+        let value = serde_json::to_value(dto).unwrap();
+        assert_eq!(value["kind"], serde_json::json!("pdf"));
+        assert_eq!(value["grouping"], serde_json::json!("ungrouped"));
     }
 
     #[test]
     fn an_image_source_is_labelled_image() {
-        let dto = SourceFileDto::from(&source("/p.png", SourceKind::Image, SourceStatus::Ready));
-        assert_eq!(dto.kind, "image");
+        let dto = SourceFileDto::project(
+            &source("/p.png", SourceKind::Image, SourceStatus::Ready),
+            GroupingDto::Grouped,
+        );
+        assert_eq!(dto.kind, SourceKindDto::Image);
         assert_eq!(dto.file_name, "p.png");
     }
 
@@ -205,12 +262,12 @@ mod tests {
         assert_eq!(encrypted, serde_json::json!({ "kind": "encrypted" }));
 
         let unreadable = serde_json::to_value(SourceStatusDto::Unreadable {
-            reason: "broken xref".to_owned(),
+            reason: UnreadableReasonDto::Damaged,
         })
         .unwrap();
         assert_eq!(
             unreadable,
-            serde_json::json!({ "kind": "unreadable", "reason": "broken xref" })
+            serde_json::json!({ "kind": "unreadable", "reason": "damaged" })
         );
     }
 
@@ -220,11 +277,12 @@ mod tests {
             id: pdf_tools_core::domain::ids::SlotId(3),
             source: SourceId(7),
             page: pdf_tools_core::domain::ids::PageIndex(1),
+            rotation: Default::default(),
         };
         let value = serde_json::to_value(PageSlotDto::from(&slot)).unwrap();
         assert_eq!(
             value,
-            serde_json::json!({ "id": 3, "source": 7, "page": 1 })
+            serde_json::json!({ "id": 3, "source": 7, "page": 1, "rotation": 0 })
         );
     }
 
