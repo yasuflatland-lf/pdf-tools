@@ -108,7 +108,7 @@ fn compose_writes_the_pages_in_plan_order() {
 
     // Verify by re-probing and comparing perceptual hashes -- never bytes.
     let info = engine().probe(&out).unwrap();
-    assert_eq!(info.page_count, 2);
+    assert_eq!(info.page_count(), 2);
     let spec = RasterSpec {
         target_width_px: 128,
     };
@@ -178,7 +178,7 @@ fn the_same_page_may_be_included_twice() {
         ],
     };
     engine().compose(&plan, &out).unwrap();
-    assert_eq!(engine().probe(&out).unwrap().page_count, 2);
+    assert_eq!(engine().probe(&out).unwrap().page_count(), 2);
 }
 
 #[test]

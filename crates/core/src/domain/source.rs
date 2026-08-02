@@ -153,9 +153,16 @@ impl SourceFile {
 /// What `PdfEngine::probe` reports about a document.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentInfo {
-    pub page_count: u32,
+    /// One entry per page. The page count is read off this rather than stored
+    /// beside it, so the two cannot disagree.
     pub page_sizes: Vec<PageSize>,
     pub encrypted: bool,
+}
+
+impl DocumentInfo {
+    pub fn page_count(&self) -> u32 {
+        self.page_sizes.len() as u32
+    }
 }
 
 /// What `ImageDecoder::probe` reports. DPI is deliberately absent: page sizing
@@ -229,6 +236,21 @@ mod tests {
         assert_eq!(source.page_count(), 2);
         assert_eq!(source.page_sizes(), page_sizes);
         assert_eq!(source.status(), SourceStatus::Ready);
+    }
+
+    #[test]
+    fn page_count_follows_the_page_sizes() {
+        let three_pages = DocumentInfo {
+            page_sizes: vec![PageSize::A4_PORTRAIT; 3],
+            encrypted: false,
+        };
+        let no_pages = DocumentInfo {
+            page_sizes: Vec::new(),
+            encrypted: false,
+        };
+
+        assert_eq!(three_pages.page_count(), 3);
+        assert_eq!(no_pages.page_count(), 0);
     }
 
     #[test]

@@ -369,7 +369,7 @@ fn an_image_becomes_a_page_of_the_requested_size() {
     };
     engine().compose(&plan, &out).unwrap();
     let info = engine().probe(&out).unwrap();
-    assert_eq!(info.page_count, 1);
+    assert_eq!(info.page_count(), 1);
     assert_eq!(
         info.page_sizes[0].size_class(),
         PageSize::A4_PORTRAIT.size_class()
@@ -492,7 +492,7 @@ fn images_and_pdf_pages_can_be_interleaved() {
         ],
     };
     engine().compose(&plan, &out).unwrap();
-    assert_eq!(engine().probe(&out).unwrap().page_count, 3);
+    assert_eq!(engine().probe(&out).unwrap().page_count(), 3);
 }
 
 #[test]
