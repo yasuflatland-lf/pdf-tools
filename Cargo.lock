@@ -2464,7 +2464,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-tools"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "pdf-tools-core",
  "serde",
@@ -2482,7 +2482,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-tools-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "image",
  "pdfium-render",
