@@ -145,7 +145,7 @@ represent only a run whose pages share an orientation.
 pub fn insert_at(plan: &MergePlan, at: usize, slots: &[PageSlot]) -> MergePlan
 pub fn remove(plan: &MergePlan, ids: &[SlotId]) -> MergePlan
 pub fn reorder(plan: &MergePlan, from: SlotRange, to: usize) -> MergePlan
-pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i8) -> MergePlan
+pub fn rotate(plan: &MergePlan, ids: &[SlotId], delta: i32) -> MergePlan
 ```
 
 Every operation returns a new plan. `PlanSession` pairs that plan with its sources in a
@@ -160,6 +160,26 @@ it will move within. A span that names no slots — reversed, empty, or entirely
 resolves to nothing, so a stale selection arriving from the UI is rejected once at that boundary
 instead of being clamped again at every call site. `PlanSession::reorder` then returns having
 opened no history entry, which leaves both the document and the undo stack as they were.
+
+## Invariants nothing enforces
+
+Four properties hold across the codebase without being checked where they are relied on. Each is
+upheld by a caller or by a second implementation that agrees, and the agreement is not visible from
+the point of use:
+
+| Property                                 | Upheld by                                                     | Consequence if it stops                                    |
+| ---------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| Slot ids in a plan are unique            | `IdSequence` alone produces them, monotonically               | `remove` and `rotate` act on every copy of a repeated id   |
+| A failed source owns no slot             | `AddSources` pushes no slot on any failure path               | `compose` asks the engine for pages of an unreadable file  |
+| A grouped source folds into one card     | `can_regroup` and `groupContiguous` implement one rule twice  | a collapsed card claims a page count its run does not have |
+| A drop lands where the preview showed it | `computeDropTarget` matches `reorder`'s post-removal indexing | cards of unequal weight land off by the difference         |
+
+`Compose`'s `status() == Ready` filter is unreachable defence written because the second row is not
+guaranteed, and the frontend repeating the same-rotation condition is the third row made visible.
+Neither is a defect; both are the shape this list leaves in the code.
+
+Full working, including what upholds each property, what breaks without it, and how far each was
+checked: [`.claude/implicit-invariants.md`](../.claude/implicit-invariants.md).
 
 ## State ownership
 
