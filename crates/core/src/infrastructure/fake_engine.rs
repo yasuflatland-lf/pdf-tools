@@ -82,10 +82,10 @@ impl PdfEngine for FakePdfEngine {
             Some((src.to_path_buf(), page, spec.target_width_px));
 
         let info = self.probe(src)?;
-        if page.0 >= info.page_count {
+        if page.0 >= info.page_count() {
             return Err(PdfError::PageOutOfRange {
                 page: page.0,
-                count: info.page_count,
+                count: info.page_count(),
             });
         }
         let size = info
@@ -93,7 +93,7 @@ impl PdfEngine for FakePdfEngine {
             .get(page.0 as usize)
             .ok_or(PdfError::PageOutOfRange {
                 page: page.0,
-                count: info.page_count,
+                count: info.page_count(),
             })?;
         let height =
             ((spec.target_width_px as f32 * size.height_pt()) / size.width_pt()).round() as u32;
@@ -256,7 +256,6 @@ mod tests {
     #[test]
     fn probe_returns_the_registered_document_info() {
         let info = DocumentInfo {
-            page_count: 3,
             page_sizes: vec![PageSize::A4_PORTRAIT; 3],
             encrypted: false,
         };
@@ -321,7 +320,6 @@ mod tests {
         let engine = FakePdfEngine::new().with_document(
             "/a.pdf",
             DocumentInfo {
-                page_count: 1,
                 page_sizes: vec![PageSize::A4_PORTRAIT],
                 encrypted: false,
             },

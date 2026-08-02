@@ -145,39 +145,16 @@ impl PlanSession {
         self.undo.push(current);
     }
 
-    /// Retains the sources the new plan still justifies, then keeps the parked
-    /// entry only if the command actually moved something. A command that
-    /// changed nothing -- a Delete against a stale selection, a degenerate drag
-    /// range -- must not arm Undo, and must not cost the user their redo.
+    /// Keeps the parked entry only if the command actually moved something. A
+    /// command that changed nothing -- a Delete against a stale selection, a
+    /// degenerate drag range -- must not arm Undo, and must not cost the user
+    /// their redo.
     fn finish_change(&mut self) {
         let previous = self
             .undo
             .pop()
             .expect("begin_change must precede finish_change");
-        let sources = self
-            .document
-            .sources()
-            .iter()
-            .filter(|source| {
-                let owned_before = previous
-                    .plan()
-                    .slots()
-                    .iter()
-                    .any(|slot| slot.source == source.id());
-                let owns_now = self
-                    .document
-                    .plan()
-                    .slots()
-                    .iter()
-                    .any(|slot| slot.source == source.id());
-
-                // A source that never owned a slot represents an encrypted or
-                // unreadable file that the UI must continue to show.
-                !owned_before || owns_now
-            })
-            .cloned()
-            .collect();
-        self.document = MergeDocument::new(self.document.plan().clone(), sources);
+        self.document = self.document.dropping_sources_emptied_since(&previous);
 
         // Sources are compared too: adding an encrypted or unreadable file
         // appends a zero-page source without contributing a slot, and undoing
@@ -228,7 +205,6 @@ mod tests {
 
     fn document(page_count: u32) -> DocumentInfo {
         DocumentInfo {
-            page_count,
             page_sizes: vec![PageSize::A4_PORTRAIT; page_count as usize],
             encrypted: false,
         }
