@@ -61,6 +61,11 @@ layer.
   when the view toggles, so grid → list → grid rasterized the same page a second time. It now lives
   in a provider above both views, and its capacity is 200 rather than 100, because the two views
   cache at different widths and both sets of entries share one map.
+- **A press on a card's toggle folds the run instead of dragging the card.** The expand/collapse
+  toggle sits inside the node dnd-kit makes draggable, and the pointer sensor starts a drag after
+  8 px of movement, so a press that wandered dragged the card rather than folding or unfolding its
+  run — in the grid and in the list alike. Every control drawn on a card now stops `pointerdown`, a
+  guard the rotate buttons already carried and the two text controls did not.
 
 ### Architecture
 
@@ -91,6 +96,19 @@ layer.
   hand — the amber notice, the expand/collapse toggle, the thumbnail placeholder — into
   `src/components/card/`, and all three card shapes now declare one `CardViewProps` contract instead
   of borrowing another component's props.
+- Every control drawn on a card shares one definition of its chrome, so the class strings the three
+  of them spelled out by hand — and the drag guard only one of them remembered — cannot drift apart
+  again.
+- Which sources survive a plan change is decided by `MergeDocument` rather than by the session
+  procedure that rebuilt it. The rule is about a transition, so the aggregate is handed the document
+  it replaces; `finish_change` is left with only the question of whether the operation earned a
+  history entry, and a use case that builds a document another way can no longer skip the rule in
+  silence.
+- `DocumentInfo` derives a probed document's page count from the page sizes it collected. Two fields
+  held one fact, and three defences existed against their disagreeing — a `debug_assert_eq!` in the
+  adapter, a runtime rejection in the use case and an assertion in an integration test — none of
+  which could ever fire, because the probe collects exactly one size per page of the count it was
+  compared against. All three go with the field.
 
 ### Documentation
 
@@ -98,6 +116,10 @@ layer.
   the arithmetic behind it: why page geometry is `f32`, why sizes are compared on a one-point
   lattice, and why an arbitrary-precision type cannot enter `domain` at all.
 - `docs/architecture.md` also records `SlotRange` and corrects the `reorder` signature it describes.
+- `.claude/implicit-invariants.md` records four properties the app depends on that nothing checks
+  where they are relied on — unique slot ids, a failed source owning no slot, a grouped source
+  folding into one card, and a drop landing where its preview showed it — together with what upholds
+  each and how far each was verified. `docs/architecture.md` carries the summary.
 - The constant holding the quarter-turn-to-degrees arithmetic is documented where it is declared.
 
 ### Dependencies
