@@ -162,7 +162,6 @@ fn unique_source_path() -> PathBuf {
 
 fn fake_pdf() -> FakePdfEngine {
     let document = DocumentInfo {
-        page_count: 3,
         page_sizes: vec![PageSize::A4_PORTRAIT; 3],
         encrypted: false,
     };
@@ -178,7 +177,6 @@ fn fake_images() -> FakeImageDecoder {
 
 fn pdf_info() -> DocumentInfo {
     DocumentInfo {
-        page_count: 1,
         page_sizes: vec![PageSize::A4_PORTRAIT],
         encrypted: false,
     }
@@ -186,7 +184,6 @@ fn pdf_info() -> DocumentInfo {
 
 fn document(page_count: u32) -> DocumentInfo {
     DocumentInfo {
-        page_count,
         page_sizes: vec![PageSize::A4_PORTRAIT; page_count as usize],
         encrypted: false,
     }
@@ -215,7 +212,6 @@ fn state_with_pdf(pages: u32) -> AppState {
             inner: FakePdfEngine::new().with_document(
                 &source,
                 DocumentInfo {
-                    page_count: pages,
                     page_sizes: vec![PageSize::A4_PORTRAIT; pages as usize],
                     encrypted: false,
                 },
@@ -249,7 +245,6 @@ fn state_with_pdf_and_image() -> AppState {
         Arc::new(FakePdfEngine::new().with_document(
             "/document.pdf",
             DocumentInfo {
-                page_count: 3,
                 page_sizes: vec![PageSize::A4_PORTRAIT; 3],
                 encrypted: false,
             },
@@ -579,7 +574,6 @@ fn the_session_stays_readable_while_a_merge_runs() {
             inner: FakePdfEngine::new().with_document(
                 &source,
                 DocumentInfo {
-                    page_count: 2,
                     page_sizes: vec![PageSize::A4_PORTRAIT; 2],
                     encrypted: false,
                 },

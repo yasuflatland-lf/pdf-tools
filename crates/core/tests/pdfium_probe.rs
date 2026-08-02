@@ -11,20 +11,13 @@ use std::path::Path;
 fn probe_reports_page_count_and_sizes() {
     let engine = engine();
     let info = engine.probe(&fixture("multi_page.pdf")).unwrap();
-    assert_eq!(info.page_count, 3);
+    assert_eq!(info.page_count(), 3);
     assert_eq!(info.page_sizes.len(), 3);
     assert_eq!(
         info.page_sizes[0].size_class(),
         PageSize::A4_PORTRAIT.size_class()
     );
     assert!(!info.encrypted);
-}
-
-#[test]
-fn probe_reports_one_size_per_page() {
-    let info = engine().probe(&fixture("multi_page.pdf")).unwrap();
-
-    assert_eq!(info.page_sizes.len() as u32, info.page_count);
 }
 
 #[test]

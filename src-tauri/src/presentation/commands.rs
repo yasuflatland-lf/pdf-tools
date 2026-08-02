@@ -267,7 +267,6 @@ mod tests {
 
     fn document(pages: u32) -> DocumentInfo {
         DocumentInfo {
-            page_count: pages,
             page_sizes: vec![PageSize::A4_PORTRAIT; pages as usize],
             encrypted: false,
         }
