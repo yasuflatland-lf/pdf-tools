@@ -37,19 +37,8 @@ impl AddSources<'_> {
                     Ok(info) if info.encrypted => {
                         SourceFile::failed(source_id, path.clone(), kind, SourceStatus::Encrypted)
                     }
-                    Ok(info) if info.page_count != info.page_sizes.len() as u32 => {
-                        let error = PdfError::Unreadable {
-                            path: path.clone(),
-                            reason: format!(
-                                "probe reported {} pages but {} page sizes",
-                                info.page_count,
-                                info.page_sizes.len()
-                            ),
-                        };
-                        failed_pdf(&error, source_id, path, kind)
-                    }
                     Ok(info) => {
-                        new_slots.extend((0..info.page_count).map(|page| PageSlot {
+                        new_slots.extend((0..info.page_count()).map(|page| PageSlot {
                             id: ids.next_slot(),
                             source: source_id,
                             page: PageIndex(page),
@@ -145,7 +134,6 @@ mod tests {
 
     fn doc(pages: u32) -> DocumentInfo {
         DocumentInfo {
-            page_count: pages,
             page_sizes: vec![PageSize::A4_PORTRAIT; pages as usize],
             encrypted: false,
         }
@@ -185,33 +173,6 @@ mod tests {
                 .map(|slot| slot.page)
                 .collect::<Vec<_>>(),
             vec![PageIndex(0), PageIndex(1), PageIndex(2)]
-        );
-    }
-
-    #[test]
-    fn a_probe_that_reports_more_pages_than_sizes_is_rejected() {
-        let pdf = FakePdfEngine::new().with_document(
-            "/bad.pdf",
-            DocumentInfo {
-                page_count: 3,
-                page_sizes: vec![PageSize::A4_PORTRAIT; 2],
-                encrypted: false,
-            },
-        );
-        let result = AddSources {
-            pdf: &pdf,
-            images: &FakeImageDecoder::new(),
-        }
-        .execute(
-            &MergeDocument::default(),
-            &mut IdSequence::default(),
-            &["/bad.pdf".into()],
-        );
-
-        assert!(result.plan().is_empty());
-        assert_eq!(
-            result.sources()[0].status(),
-            SourceStatus::Unreadable(UnreadableReason::Damaged)
         );
     }
 
