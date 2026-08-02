@@ -111,7 +111,7 @@ impl MergeDocument {
     /// A source is kept when it still owns a slot, and also when it owned none
     /// in `previous`: that shape is an encrypted or unreadable file, which
     /// contributes no page and which the UI must continue to show. Losing the
-    /// last slot is a statement about a transition rather than about a single
+    /// last slot is a statement about a change rather than about a single
     /// document, which is why the document the operation started from is a
     /// parameter here.
     pub fn dropping_sources_emptied_since(&self, previous: &Self) -> Self {
