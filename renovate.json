@@ -11,9 +11,10 @@
       "groupName": "Rust dependencies"
     },
     {
-      "description": "Group npm dependency updates",
+      "description": "Group npm dependency updates and hold each one back until it clears the 24-hour minimumReleaseAge that pnpm enforces during `pnpm install --frozen-lockfile`",
       "matchManagers": ["npm"],
-      "groupName": "npm dependencies"
+      "groupName": "npm dependencies",
+      "minimumReleaseAge": "3 days"
     },
     {
       "description": "Group and pin GitHub Actions updates",
