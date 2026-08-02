@@ -42,7 +42,8 @@ your own disk.
 - **Uniform output page size** — images are fitted to the dominant page size of the PDF pages in
   the plan (A4 portrait when the plan has none), aspect ratio preserved, padded with white.
 - **Per-file error reporting** — an encrypted or corrupt file is flagged on its card and left out
-  of the merge instead of failing the whole batch.
+  of the merge instead of failing the whole batch, and its card can be dismissed once you have read
+  it. A file the app cannot merge at all is reported rather than dropped in silence.
 - **Large inputs** — the thumbnail grid is virtualized and thumbnails are rasterized lazily, so a
   1000-page plan stays responsive.
 

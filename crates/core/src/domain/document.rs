@@ -104,6 +104,31 @@ impl MergeDocument {
     pub fn is_grouped(&self, source: SourceId) -> bool {
         can_regroup(&self.plan, source)
     }
+
+    /// Returns this document with the sources the plan no longer justifies
+    /// dropped.
+    ///
+    /// A source is kept when it still owns a slot, and also when it owned none
+    /// in `previous`: that shape is an encrypted or unreadable file, which
+    /// contributes no page and which the UI must continue to show. Losing the
+    /// last slot is a statement about a change rather than about a single
+    /// document, which is why the document the operation started from is a
+    /// parameter here.
+    pub fn dropping_sources_emptied_since(&self, previous: &Self) -> Self {
+        let sources = self
+            .sources
+            .iter()
+            .filter(|source| !previous.owns_slot(source.id()) || self.owns_slot(source.id()))
+            .cloned()
+            .collect();
+
+        Self::new(self.plan.clone(), sources)
+    }
+
+    /// Whether any slot in the plan names this source.
+    fn owns_slot(&self, source: SourceId) -> bool {
+        self.plan.slots().iter().any(|slot| slot.source == source)
+    }
 }
 
 #[cfg(test)]
@@ -193,6 +218,44 @@ mod tests {
         assert_eq!(
             document.source_of(&document.plan().slots()[0]).id(),
             SourceId(10)
+        );
+    }
+
+    #[test]
+    fn a_source_that_lost_its_last_slot_is_dropped() {
+        let sources = vec![pdf_source(10, vec![A4])];
+        let previous = document_with(&[(10, 0)], sources.clone());
+        let current = document_with(&[], sources);
+
+        assert!(current
+            .dropping_sources_emptied_since(&previous)
+            .sources()
+            .is_empty());
+    }
+
+    #[test]
+    fn a_source_that_never_owned_a_slot_is_kept() {
+        let source = image_source(10);
+        let sources = vec![source.clone()];
+        let previous = document_with(&[], sources.clone());
+        let current = document_with(&[], sources);
+
+        assert_eq!(
+            current.dropping_sources_emptied_since(&previous).sources(),
+            &[source]
+        );
+    }
+
+    #[test]
+    fn a_source_that_still_owns_a_slot_is_kept() {
+        let source = pdf_source(10, vec![A4, A4]);
+        let sources = vec![source.clone()];
+        let previous = document_with(&[(10, 0), (10, 1)], sources.clone());
+        let current = document_with(&[(10, 1)], sources);
+
+        assert_eq!(
+            current.dropping_sources_emptied_since(&previous).sources(),
+            &[source]
         );
     }
 
