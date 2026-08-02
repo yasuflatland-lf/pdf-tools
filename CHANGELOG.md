@@ -7,6 +7,105 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-02
+
+Nothing new arrives on the toolbar. This release settles what the previous ones exposed: an odd
+quarter turn that reached pages the user never touched, a file the app declined to merge without
+saying so, an error card with no way off the screen, and a selection the list view never drew.
+Behind them the rules moved to the layer that owns them — one list of mergeable extensions, a page
+size that cannot be degenerate, a source whose status and page metadata cannot disagree, a movable
+run of slots with a type of its own — and the last direct filesystem call left the application
+layer.
+
+### Pages
+
+- **A turn changes the page it was applied to and nothing else.** The plan's dominant page size
+  counted a PDF slot at the size it would be _seen_ at, turning the stored size whenever the slot
+  carried an odd quarter turn, and composition then wrote that same rotation onto the sheet as
+  `/Rotate`. An odd turn therefore landed on an image page twice and on a PDF page once, and the two
+  came out at right angles to each other. Both kinds of slot are now built the same way — a sheet at
+  the representative unrotated size, plus `/Rotate` from the slot — so turning every PDF page to
+  landscape no longer resizes the untouched image pages beside them.
+- **A card stays expanded while its source is only ungrouped.** Expanding a multi-page source,
+  turning one of its pages and turning it back left the document exactly where it started but the
+  expansion gone. The view pruned its expansion set against the sources that were still _grouped_,
+  and a mixed rotation ungroups a source that is still very much in the document; it now prunes
+  against every source the snapshot lists. Selection stays pruned by plan membership, because a slot
+  that has left the plan really is gone.
+- **The rotate controls are drawn only on a card that can rotate.** A card given no rotate operation
+  still rendered the two hover buttons, which did nothing when pressed.
+
+### Sources
+
+- **A file the app cannot merge says so.** `notes.txt` dropped alongside `report.pdf` used to vanish
+  without a word — no page, no error card, no notice. Three places answered "is this mergeable?" and
+  none of them was in charge: the domain now owns the single list of extensions and hands it to the
+  picker filter, and a path that is not on it is reported as unsupported rather than skipped in
+  silence.
+- **A source that contributes no pages can be dismissed.** Every plan operation addresses slots, and
+  a source in a failed state owns none, so a password-protected PDF produced a card with no way off
+  the screen — Undo removed it only by also undoing everything done since. `remove_source` removes
+  the source itself, bracketed by the same change-and-history pair as every other mutation, and the
+  error card carries a `Remove` control.
+- **A keystroke on that control stays on it.** The button stops its own `keydown`, so pressing a key
+  while it holds focus can no longer steer the shell behind it.
+
+### Interface
+
+- **A selected row looks selected.** Selection was already real in both views — Delete and the
+  rotate buttons acted on it whichever one was open — but only the grid drew it. The flag is now
+  computed once, in the surface that renders both views, and handed to each card shape, so a
+  selected row shows the same ring a selected card does. The grid stops subscribing to the selection
+  separately, which also spares it a whole-shell re-render on every selection change.
+- **The thumbnail cache survives a view switch.** The cache belonged to the surface that unmounts
+  when the view toggles, so grid → list → grid rasterized the same page a second time. It now lives
+  in a provider above both views, and its capacity is 200 rather than 100, because the two views
+  cache at different widths and both sets of entries share one map.
+
+### Architecture
+
+- Slot rasterization is a use case rather than a command body. The command resolves a slot to its
+  source under the session lock and drops the lock before the engine runs; resolving copies one path
+  instead of the whole document, which is a cost paid per visible card in a virtualized grid.
+- The application layer no longer touches the filesystem. `Compose`'s pre-flight `is_file` loop was
+  the only IO outside a port, and it earned no correctness — the adapter already checks, and the
+  document is assembled in memory and written once at the end, so a failure part-way through leaves
+  no output behind. The fail-fast it did earn is restored in the PDFium adapter, where touching the
+  filesystem is the job.
+- `UnavailablePdfEngine`, the stand-in installed when PDFium fails to load, moved from presentation
+  to infrastructure, where implementations of a port belong.
+- `PageSize` has one constructor and one equality. `PageSize::new` accepts only finite, strictly
+  positive dimensions, so a degenerate page — which would have yielded an infinite or negative scale
+  in the adapter — is no longer a value the type admits. Equality is the one-point lattice
+  `size_class` already used, rather than a raw `f32` comparison that called 595.2 pt and 595.4 pt
+  different pages.
+- `SourceFile` states its own rules. Three constructors replace a struct literal written out five
+  times and the six fields are now private, so a PDF whose page sizes and page count disagree —
+  which used to make it quietly stop voting on the plan's page size — cannot be built at all.
+- `SlotRange` names a movable run of slots. Its bounds are resolved once against the plan, and an
+  empty, reversed or wholly out-of-range span resolves to nothing, replacing a clamp that four call
+  sites each expressed in their own way.
+- The dead `MergePlan::position_of` is deleted, and a rotation delta is normalised in one place
+  instead of in the command and again three calls deeper.
+- The frontend's duplicated helpers are collected into `src/lib`, the card chrome both views drew by
+  hand — the amber notice, the expand/collapse toggle, the thumbnail placeholder — into
+  `src/components/card/`, and all three card shapes now declare one `CardViewProps` contract instead
+  of borrowing another component's props.
+
+### Documentation
+
+- `docs/architecture.md` gains a "Numeric representation" section, and `.claude/numeric-precision.md`
+  the arithmetic behind it: why page geometry is `f32`, why sizes are compared on a one-point
+  lattice, and why an arbitrary-precision type cannot enter `domain` at all.
+- `docs/architecture.md` also records `SlotRange` and corrects the `reorder` signature it describes.
+- The constant holding the quarter-turn-to-degrees arithmetic is documented where it is declared.
+
+### Dependencies
+
+- `@types/react` 19.2.18 and `@types/react-dom` 19.2.4.
+- Renovate holds an npm update for three days, so an update it proposes has already cleared the
+  24-hour minimum release age pnpm enforces during `pnpm install --frozen-lockfile`.
+
 ## [0.4.0] — 2026-08-01
 
 Files reach the document without a drag. A folder dropped on the window used to do nothing at all —
