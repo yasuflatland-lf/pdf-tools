@@ -2,7 +2,7 @@
 # Install rustfmt and clippy alongside rust so CI (mise-action) has them.
 # llvm-tools-preview is required by cargo-llvm-cov for source-based coverage.
 rust = { version = "1.97.1", components = "rustfmt,clippy,llvm-tools-preview" }
-node = "24.18.1"
+node = "24.19.0"
 pnpm = "11.18.0"
 cargo-binstall = "1.21.1"
 "cargo:cargo-nextest" = "0.9.140"
