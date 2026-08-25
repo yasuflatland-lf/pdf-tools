@@ -4,7 +4,7 @@
 rust = { version = "1.97.1", components = "rustfmt,clippy,llvm-tools-preview" }
 node = "24.18.1"
 pnpm = "11.18.0"
-cargo-binstall = "1.21.1"
+cargo-binstall = "1.22.0"
 "cargo:cargo-nextest" = "0.9.140"
 "cargo:cargo-llvm-cov" = "0.8.7"
 
